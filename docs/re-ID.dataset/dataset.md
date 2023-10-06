@@ -16,3 +16,7 @@
   - **Description:** MARS is a large scale video based person reidentification dataset, an *extension* of the Market-1501 dataset. It has been collected from six near-synchronized cameras. It consists of 1,261 different pedestrians, who are captured by at least 2 cameras. The variations in poses, colors and illuminations of pedestrians, as well as the poor image quality, make it very difficult to yield high matching accuracy. Moreover, the dataset contains 3,248 distractors in order to make it more realistic. Deformable Part Model and GMMCP tracker were used to automatically generate the tracklets (mostly 25-50 frames long).
 - [x] **[WIP]** [**LS-VID**](https://arxiv.org/abs/1908.10049) (Large-Scale Video dataset for person ReID): Sent request to [NELVT](http://www.pkuvmc.com/dataset.html) in Oct. 5.
   - **Description:** LS-VID shows the following new features: (1)Longer sequences. (2) More accurate pedestrian tracklets. (3) Currently the largest video ReID dataset. (4) Define a more realistic and challenging ReID task.
+
+## Multi-camera tracking
+
+- [ ] MMPTTRACK

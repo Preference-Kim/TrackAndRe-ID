@@ -19,6 +19,16 @@ This document cover the work objectives for the *next two weeks*(hopefully) from
     - I/O features, multi-camera, online processing,,, etc
 - 내일 찾아놓은 코드 한번 돌려보는 것도 좋을듯
 
+### 2023-10-06
+
+- multi-camera multiple people tracking
+  - MMPTTRACK@ICCV'21
+    - [SITELINK](https://iccv2021-mmp.github.io/)
+    - [Paper] about Dataset
+    - [YOUTUBE](https://youtu.be/Hzw1__WYjVw?si=a1AhOJk3CoAjdbaP)
+  - [BoT-SORT]: Robust Associations Multi-Pedestrian Tracking
+- **plz check today's memo(local)**
+
 ## 10/9~13
 
 Integration: tracking -> ReID
@@ -26,3 +36,6 @@ Integration: tracking -> ReID
 ## 10/16~20
 
 ## 10/23~27 (final week)
+
+[Paper]: https://arxiv.org/pdf/2111.15157.pdf
+[BoT-SORT]: https://arxiv.org/pdf/2206.14651.pdf
