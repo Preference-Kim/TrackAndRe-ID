@@ -1,3 +1,6 @@
+# Confidential
+docs/re-ID.dataset/*.pdf
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
