@@ -5,7 +5,7 @@ import torch
 from .utils import bt_util
 from .nets import nn as bt
 
-def track_cam(model,idx, fps, sz, cap, frames_queue):
+def track_cam(model,idx, fps, sz, cap, frames_queue, conf=0.001, iou=0.1):
     bytetrack = bt.BYTETracker(fps)
     while cap.isOpened():
         ret, frame = cap.read()
@@ -43,7 +43,7 @@ def track_cam(model,idx, fps, sz, cap, frames_queue):
                 outputs = model(sample)
 
             # NMS
-            outputs = bt_util.non_max_suppression(outputs, 0.001, 0.9) #outputs, conf_threshold=0.25, iou_threshold=0.45
+            outputs = bt_util.non_max_suppression(outputs, conf, iou) #outputs, conf_threshold=0.25, iou_threshold=0.45
             for i, output in enumerate(outputs):
                 detections = output.clone()
                 bt_util.scale(detections[:, :4], sample[i].shape[1:], shapes[0], shapes[1])

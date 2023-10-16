@@ -405,7 +405,10 @@ class BYTETracker:
         removed_tracks = []
 
         # add index
-        boxes = numpy.concatenate([boxes, numpy.arange(len(boxes)).reshape(-1, 1)], axis=-1)
+        if len(boxes) > 0:
+            boxes = numpy.concatenate([boxes, numpy.arange(len(boxes)).reshape(-1, 1)], axis=-1)
+        else:
+            return []
 
         indices_low = scores > 0.1
         indices_high = scores < 0.5

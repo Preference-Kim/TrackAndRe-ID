@@ -12,7 +12,7 @@ import sys
 sys.path.append("/home/sunhokim/Documents/mygit/TrackAndRe-ID")
 sys.path.append("/home/sunhokim/Documents/mygit/TrackAndRe-ID/mylibrary")
 
-from threading import Thread
+from threading import Thread, active_count
 import queue 
 
 import cv2
@@ -39,6 +39,8 @@ rtsp_sources = [
 # Initialize the LoadStreams class
 streams = LoadStreams(sources=rtsp_sources, imgsz=640, buffer=True)
 
+print('streams.imgsz', streams.imgsz)
+
 # Create a queue for frames to be displayed in the main thread
 frames_queue = [queue.Queue() for _ in rtsp_sources]
 
@@ -48,10 +50,12 @@ capture_gen = streams.cap_gen()
 # Create and start threads for each video source
 threads = []
 for i, cap in enumerate(capture_gen):
-    thread = Thread(target=track_cam, args=(model, i, streams.fps[i], streams.imgsz, cap, frames_queue)) # track_cam(idx, fps, sz, cap, frames_queue)
+    thread = Thread(target=track_cam, args=(model, i, streams.fps[i], streams.imgsz, cap, frames_queue, 0.2, 0.55))
     LOGGER.info(f'Video Thread ~~~~~~~~~~~~~~~~~~~~~ #{i}')
     threads.append(thread)
     thread.start()
+
+print(f"현재 실행 중인 쓰레드 수: {active_count()}")
 
 # Create a main thread for displaying frames
 while True:
@@ -65,6 +69,8 @@ while True:
         streams.close()
         cv2.destroyAllWindows()
         break
+
+print(f"현재 실행 중인 쓰레드 수: {active_count()}")
 
 # Wait for all threads to complete
 for thread in threads:
