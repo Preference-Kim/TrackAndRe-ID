@@ -1,4 +1,5 @@
 # Confidential
+images/
 docs/re-ID.dataset/*.pdf
 
 # Byte-compiled / optimized / DLL files
