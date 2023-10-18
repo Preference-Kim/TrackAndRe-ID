@@ -53,18 +53,22 @@ frames_queue = [queue.Queue() for _ in rtsp_sources]
 # Create a generator for VideoCapture objects
 capture_gen = streams.cap_gen()
 
-# Create and start threads for each video source
+# Create threads for each video source
 threads = []
-exit_flags = [False] * len(rtsp_sources)
 
 for i, cap in enumerate(capture_gen):
-    thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.35, 0.7)
+    thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.09, 0.7) # #outputs, conf_threshold=0.25, iou_threshold=0.45
+    thread.record = True
+    thread.buf_dir = 'images/buf'
     thread.daemon = True
-    LOGGER.info(f'Video Thread ~~~~~~~~~~~~~~~~~~~~~ #{i}')
     threads.append(thread)
-    thread.start()
 
-print(f"current number of running threads: {active_count()}")
+# Start threads
+for t in threads:
+    t.start()
+    LOGGER.info(f'TrackCam Thread #{t.idx} has been successfully started ✅')
+
+print(f"\nSTARTING::::💡 current number of running threads: {active_count()}\n")
 
 # Create a main thread for displaying frames
 while True:
@@ -76,10 +80,8 @@ while True:
             cv2.imshow(window_name, frame.astype('uint8'))
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
-        for i in range(len(threads)):
-            exit_flags[i] = True  # Set the thread termination conditions
         streams.close()
         cv2.destroyAllWindows()
         break
 
-print(f"current number of running threads: {active_count()}")
+print(f"\nFINISHED::::💡 current number of running threads: {active_count()}")

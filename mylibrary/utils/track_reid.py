@@ -26,6 +26,7 @@ class TrackCamThread(Thread):
         self.frame_ant = None
         self.record = True
         self.stride = 3
+        self.buf_dir = 'images/buf'
     
     def run(self):
         while self.cap.isOpened():
@@ -33,6 +34,7 @@ class TrackCamThread(Thread):
             if not ret:
                 break
             else:
+                self.count += 1
                 outputs = self.track(frame)
                 self.frame_ant = frame.copy()
                 if len(outputs) > 0:
@@ -46,7 +48,7 @@ class TrackCamThread(Thread):
                         # get ID of object
                         index = int(identities[i]) if identities is not None else 0
                         if self.count%self.stride == 0 and self.record:
-                            crop_dir = f'images/buf/{self.idx}'
+                            crop_dir = f'{self.buf_dir}/{self.idx}'
                             os.makedirs(crop_dir, exist_ok=True)
                             cropped = deepcopy(frame[y1:y2, x1:x2])
                             if cropped is not None and cropped.size > 0:
@@ -56,8 +58,6 @@ class TrackCamThread(Thread):
             self.frames_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
     
     def track(self,frame):
-        self.count += 1
-        
         boxes = []
         confidences = []
         object_classes = []
