@@ -29,6 +29,7 @@ class TrackCamThread(Thread):
         self.buf_dir = 'images/buf'
     
     def run(self):
+        os.makedirs(self.buf_dir, exist_ok=True)
         while self.cap.isOpened():
             ret, frame = self.cap.read()
             if not ret:
@@ -47,12 +48,10 @@ class TrackCamThread(Thread):
                         x1, y1, x2, y2 = list(map(int, box))
                         # get ID of object
                         index = int(identities[i]) if identities is not None else 0
-                        if self.count%self.stride == 0 and self.record:
-                            crop_dir = f'{self.buf_dir}/{self.idx}'
-                            os.makedirs(crop_dir, exist_ok=True)
+                        if self.count%self.stride == 0 :
                             cropped = deepcopy(frame[y1:y2, x1:x2])
-                            if cropped is not None and cropped.size > 0:
-                                cv2.imwrite(f'{crop_dir}/id{index}_{self.count}.jpg', cropped)
+                            if cropped is not None and cropped.size > 0 and self.record:
+                                cv2.imwrite(f'{self.buf_dir}/id{index}_cam{self.idx}_{self.count}.jpg', cropped)
                         draw_line(self.frame_ant, x1, y1, x2, y2, index)
             
             self.frames_queue.put(self.frame_ant) # Send the frame to the main thread for displaying

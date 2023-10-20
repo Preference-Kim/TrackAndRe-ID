@@ -14,19 +14,19 @@ This document cover the work objectives for the *next two weeks*(hopefully) from
 ### 2023-10-05
 
 - 일단 Torchreid instruction을 따라 모델을 준비해보자([reference](./re-ID.model/Torchreid.md))
-  - modelzoo에서 모델을 받아오고, Market 데이터로 성능을 확인해보자
-  - re-ID의 I/O 및 process에 대해서 이해가 명확하지 않은 것 같은데 짚어보자:
-    - I/O features, multi-camera, online processing,,, etc
+    - modelzoo에서 모델을 받아오고, Market 데이터로 성능을 확인해보자
+    - re-ID의 I/O 및 process에 대해서 이해가 명확하지 않은 것 같은데 짚어보자:
+        - I/O features, multi-camera, online processing,,, etc
 - 내일 찾아놓은 코드 한번 돌려보는 것도 좋을듯
 
 ### 2023-10-06
 
 - multi-camera multiple people tracking
-  - MMPTTRACK@ICCV'21
-    - [SITELINK](https://iccv2021-mmp.github.io/)
-    - [Paper] about Dataset
-    - [YOUTUBE](https://youtu.be/Hzw1__WYjVw?si=a1AhOJk3CoAjdbaP)
-  - [BoT-SORT]: Robust Associations Multi-Pedestrian Tracking
+    - MMPTTRACK@ICCV'21
+        - [SITELINK](https://iccv2021-mmp.github.io/)
+        - [Paper] about Dataset
+        - [YOUTUBE](https://youtu.be/Hzw1__WYjVw?si=a1AhOJk3CoAjdbaP)
+    - [BoT-SORT]: Robust Associations Multi-Pedestrian Tracking
 - **plz check today's memo(local)**
 
 ## 10/9~13
@@ -34,6 +34,32 @@ This document cover the work objectives for the *next two weeks*(hopefully) from
 Integration: tracking -> ReID
 
 ## 10/16~20
+
+- After getting [boxes, id, score, class, idx] from `ByteTrack.update`, Re-ID will run for synchronization
+
+```python
+for id in unsynced_ids:
+ search(id, gallery) # search in reid gallery
+```
+
+### Training with MARS dataset
+
+```bash
+Speed: 0.0211 sec/batch                                                                                                                       │
+│ Computing distance matrix with metric=cosine ...                                                                                              │
+│ Computing CMC and mAP ...                                                                                                                     │
+│ ** Results **                                                                                                                                 │
+│ mAP: 76.0%                                                                                                                                    │
+│ CMC curve                                                                                                                                     │
+│ Rank-1  : 83.9%                                                                                                                               │
+│ Rank-5  : 93.9%                                                                                                                               │
+│ Rank-10 : 95.9%                                                                                                                               │
+│ Rank-20 : 96.7%                                                                                                                               │
+│ Checkpoint saved to "log/osnet_ain_x1_0/mars/imagenet_cosine/model/model.pth.tar-60"                                                          │
+│ Elapsed 4:43:15   
+```
+
+###
 
 ## 10/23~27 (final week)
 

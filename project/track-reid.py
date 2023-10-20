@@ -25,7 +25,7 @@ from mylibrary.utils.loader import LoadStreams  # Import the LoadStreams class f
 from mylibrary.utils import LOGGER
 from mylibrary.utils.track_reid import TrackCamThread
 
-model = torch.load('weights/yolo/v8_s.pt', map_location='cuda')['model'].float()
+model = torch.load('weights/yolo/v8_n.pt', map_location='cuda')['model'].float()
 model.eval()
 model.half()
 
@@ -42,6 +42,7 @@ rtsp_sources = [
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/201',
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/301',
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/401',
+    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/501',
 ]
 
 # Initialize the LoadStreams class
@@ -57,9 +58,10 @@ capture_gen = streams.cap_gen()
 threads = []
 
 for i, cap in enumerate(capture_gen):
-    thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.09, 0.7) # #outputs, conf_threshold=0.25, iou_threshold=0.45
+    thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.01, 0.85) # #outputs, conf_threshold=0.25, iou_threshold=0.45
     thread.record = True
-    thread.buf_dir = 'images/buf'
+    thread.stride = 12
+    thread.buf_dir = 'images/buf-l-2023-10-20-1'
     thread.daemon = True
     threads.append(thread)
 
