@@ -7,6 +7,7 @@ import numpy as np
 import torch
 
 from . import bt_util
+from .gallery_manager import GalleryManager, ReidMap
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
@@ -27,6 +28,7 @@ class TrackCamThread(Thread):
         self.record = True
         self.stride = 3
         self.buf_dir = 'images/buf'
+        self.reid_man = None
     
     def run(self):
         os.makedirs(self.buf_dir, exist_ok=True)
@@ -41,6 +43,9 @@ class TrackCamThread(Thread):
                 if len(outputs) > 0:
                     boxes = outputs[:, :4]
                     identities = outputs[:, 4]
+                    if  self.reid_man is not None:
+                        ids = [int(x) for x in identities] if identities is not None else [-1]
+                        self.reid_man.list_actives(ids,self.idx)
                     object_classes = outputs[:, 6]
                     for i, box in enumerate(boxes):
                         if object_classes[i] != 0:  # 0 is for person class (COCO)
@@ -50,9 +55,16 @@ class TrackCamThread(Thread):
                         index = int(identities[i]) if identities is not None else 0
                         if self.count%self.stride == 0 :
                             cropped = deepcopy(frame[y1:y2, x1:x2])
-                            if cropped is not None and cropped.size > 0 and self.record:
-                                cv2.imwrite(f'{self.buf_dir}/id{index}_cam{self.idx}_{self.count}.jpg', cropped)
-                        draw_line(self.frame_ant, x1, y1, x2, y2, index)
+                            if cropped is not None and cropped.size > 0:
+                                if self.reid_man is not None:
+                                    self.reid_man.update(cropped, index, self.idx, self.count)
+                                    self.reid_man.sync_id(self, GalleryManager.active_ids, index, self.idx)
+                                if self.record:
+                                    cv2.imwrite(f'{self.buf_dir}/id{index}_cam{self.idx}_{self.count}.jpg', cropped)
+                        if i in ReidMap.id_map.keys():
+                            draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
+                        else:
+                            draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
             
             self.frames_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
     
@@ -103,11 +115,11 @@ class TrackCamThread(Thread):
                                 np.array(object_classes))
         return outputs
         
-def draw_line(image, x1, y1, x2, y2, index):
+def draw_line_unsync(image, x1, y1, x2, y2, index):
     w = 10
     h = 10
-    color = (200, 0, 0)
-    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 200, 0), 2)
+    color = (0, 200, 0)
+    cv2.rectangle(image, (x1, y1), (x2, y2), (200, 200, 0), 2)
     # Top left corner
     cv2.line(image, (x1, y1), (x1 + w, y1), color, 3)
     cv2.line(image, (x1, y1), (x1, y1 + h), color, 3)
@@ -125,6 +137,33 @@ def draw_line(image, x1, y1, x2, y2, index):
     cv2.line(image, (x1, y2), (x1, y2 - h), color, 3)
 
     text = f'ID:{str(index)}'
+    cv2.putText(image, text,
+                (x1, y1 - 2),
+                0, 1 / 2, (0, 255, 0),
+                thickness=1, lineType=cv2.FILLED)
+
+def draw_line_sync(image, x1, y1, x2, y2, index):
+    w = 10
+    h = 10
+    color = (200, 0, 0)
+    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 200), 4)
+    # Top left corner
+    cv2.line(image, (x1, y1), (x1 + w, y1), color, 4)
+    cv2.line(image, (x1, y1), (x1, y1 + h), color, 4)
+
+    # Top right corner
+    cv2.line(image, (x2, y1), (x2 - w, y1), color, 4)
+    cv2.line(image, (x2, y1), (x2, y1 + h), color, 4)
+
+    # Bottom right corner
+    cv2.line(image, (x2, y2), (x2 - w, y2), color, 4)
+    cv2.line(image, (x2, y2), (x2, y2 - h), color, 4)
+
+    # Bottom left corner
+    cv2.line(image, (x1, y2), (x1 + w, y2), color, 4)
+    cv2.line(image, (x1, y2), (x1, y2 - h), color, 4)
+
+    text = f'ReID:{str(index)}'
     cv2.putText(image, text,
                 (x1, y1 - 2),
                 0, 1 / 2, (0, 255, 0),
