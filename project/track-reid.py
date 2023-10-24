@@ -30,7 +30,7 @@ rtsp_sources = [
 
 # Initialize the LoadStreams class
 streams = LoadStreams(sources=rtsp_sources, imgsz=640, buffer=True)
-pixel_mean, pixel_std = get_pixel_params(rtsp_sources=rtsp_sources, vid_stride=3)
+pixel_mean, pixel_std = get_pixel_params(sources=rtsp_sources, vid_stride=1)
 
 # Create a queue for frames to be displayed in the main thread
 frames_queue = [queue.Queue() for _ in rtsp_sources]
@@ -53,7 +53,7 @@ extractor = FeatureExtractor(
     device='cuda:0'
 )
 
-model = torch.load('weights/yolo/v8_s.pt', map_location='cuda')['model'].float()
+model = torch.load('weights/yolo/v8_n.pt', map_location='cuda')['model'].float()
 model.eval()
 model.half()
 
@@ -69,7 +69,7 @@ threads = []
 for i, cap in enumerate(capture_gen):
     thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.01, 0.85) # #outputs, conf_threshold=0.25, iou_threshold=0.45
     thread.record = False 
-    thread.stride = 3
+    thread.stride = 5
     thread.reid_man = reid_man
     thread.buf_dir = 'images/gallery'
     thread.daemon = True

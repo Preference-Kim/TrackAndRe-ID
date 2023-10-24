@@ -100,13 +100,15 @@ class GalleryManager:
     Manage gallery features, matching id, and gallery size.
     """
     
-    active_ids = {} # list of Active IDs per camera
+    _active_ids = {-1:(-1,)} # list of Active IDs per camera {cam(int):ids(tuple of int)}
+    _cam = {-1:-1} # id(int): cam(int)
 
     def __init__(self, model, buf_dir):
         self.buf_dir = buf_dir
         self.extractor = model
-        self.features = {}
-        self.cam = {}
+        self.features = {-1: torch.zeros(1, 512).cuda()}
+        self.min_dist_thres = 0.1
+        self.max_dist_thres = 0.25
         # TODO State
 
     def load_gallery(self):
@@ -119,18 +121,32 @@ class GalleryManager:
     def update(self, im, id, cam, count):
         """update distinctive feature"""
         im_feat = self.extractor([im])
-        if id in self.features:
-            distmat = metrics.compute_distance_matrix(im_feat, self.features[id], metric='cosine')
-            min_dist = torch.min(distmat).item()
-            if min_dist>0.03:
-                torch.cat((self.features[id], im_feat),dim=0)
+        reid = ReidMap.get_reid(id)
+        fs = self.features.copy()
+        if reid ==-1:
+            if id in fs:
+                distmat = metrics.compute_distance_matrix(im_feat, self.features[id], metric='cosine')
+                min_dist = torch.min(distmat).item()
+                if min_dist>self.min_dist_thres:
+                    torch.cat((self.features[id], im_feat),dim=0)
+                    cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im)
+            else:
+                self.features[id] = im_feat
                 cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im)
         else:
-            self.cam[id] = cam
-            self.features[id] = im_feat
-            cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im)
+            min_dist = 1
+            K = GalleryManager._cam.keys()
+            for i in K:
+                if i!=-1 and ReidMap.id_map.get(i,-1)==reid:
+                    distmat = metrics.compute_distance_matrix(im_feat, self.features[id], metric='cosine')
+                    min_dismat = torch.min(distmat).item()
+                    if min_dismat < min_dist:
+                        min_dist = min_dismat
+            if min_dist>self.min_dist_thres:
+                torch.cat((self.features[id], im_feat),dim=0)
+                cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im)
     
-    def sync_id(self, ids, id, cam):
+    def sync_id(self, id, cam):
         """
             TODO: re-id inter camera
             ids: list of active ids
@@ -139,32 +155,58 @@ class GalleryManager:
 
         min_distance = 1
 
-        for i in ids: #in self.features.keys() and active
-            if i != id and self.cam[i]!= cam:
-                dismat = metrics.compute_distance_matrix(self.features[id], self.features[i], metric='cosine')
-                min_dismat = torch.min(dismat).item()
-                # minimax_dismat = torch.max(dismat).item()
+        gis = GalleryManager._active_ids.copy()
+        for c, ids in gis.items(): #in self.features.keys() and active
+            if cam == c:
+                continue
+            for i in ids:
+                if i in self.features:
+                    dismat = metrics.compute_distance_matrix(self.features[id], self.features[i], metric='cosine')
+                    min_dismat = torch.min(dismat).item() 
+                    # minimax_dismat = torch.max(dismat).item()
 
-                if min_dismat < min_distance:
-                    min_distance = min_dismat
-                    # minimax_distance = minimax_dismat
-                    min_i = i
+                    if min_dismat < min_distance:
+                        min_distance = min_dismat
+                        # minimax_distance = minimax_dismat
+                        min_i = i
         
-        if min_distance < .25:
+        if min_distance < self.max_dist_thres:
             ReidMap.map_reid(id, min_i)
     
-    @classmethod
-    def list_actives(cls,ids,cam):
-        cls.active_ids[cam]=ids
-    
-    def remap_id(self, id, cam):
+    def remap_id(self, id):
         """
-        TODO: re-id intra camera
+        TODO: re-id intra camera when self.features[id].shape[0]<30
         Args:
             id (_type_): _description_
             cam (_type_): _description_
         """
-        pass
+        fs=self.features.copy()
+        
+        min_distance = 1
+
+        for i, f in fs.items():
+            if i == id or i in GalleryManager._active_ids[GalleryManager._cam[i]]:
+                continue
+            
+            dismat = metrics.compute_distance_matrix(self.features[id], f, metric='cosine')
+            min_dismat = torch.min(dismat).item() 
+
+            if min_dismat < min_distance:
+                min_distance = min_dismat
+                # minimax_distance = minimax_dismat
+                min_i = i
+        
+        if min_distance < self.max_dist_thres:
+            ReidMap.map_reid(id, min_i)
+    
+    @classmethod
+    def list_actives(cls,ids,cam):
+        cls._cam.update({i: cam for i in ids})        
+        cls._active_ids[cam] = tuple(ids)
+    
+    @classmethod
+    def get_actives(cls):
+        return cls._active_ids.items()
         
     def _manage(self):
         """
@@ -172,3 +214,4 @@ class GalleryManager:
         Inactive features may need to be removed.
         """
         pass
+    

@@ -18,7 +18,7 @@ def get_pixel_params(sources, vid_stride=3):
 
         n = 0
 
-        while n<45:
+        while n<5:
             ret, frame = cap.read()
             
             if not ret:
