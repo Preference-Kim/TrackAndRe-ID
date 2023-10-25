@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from . import bt_util
-from .gallery_manager import ReIDManager, ReidMap
+from .gallery_manager import ReidMap
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
@@ -26,7 +26,7 @@ class TrackCamThread(Thread):
         self.count = -1
         ###
         self.frame_ant = None
-        self.record = True
+        self.save = True
         self.stride = 3
         self.buf_dir = 'images/buf'
         self.reid_man = None
@@ -58,7 +58,7 @@ class TrackCamThread(Thread):
                             cropped = deepcopy(frame[y1:y2, x1:x2])
                             if cropped is not None and cropped.size > 0:
                                 if self.reid_man is not None:
-                                    self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, record = self.record)
+                                    self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
                                     if ReidMap.get_reid(index) == -1:
                                         if self.reid_man.features[index].shape[0]<30:
                                             self.reid_man.remap_id(index)

@@ -14,7 +14,7 @@ from . import ops
 class LoadStreams:
     """YOLOv8 streamloader, i.e. `yolo predict source='rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`."""
 
-    def __init__(self, sources='file.streams', imgsz=640, vid_stride=1, buffer=False):
+    def __init__(self, sources='file.streams', imgsz=640, vid_stride=1, buffer=False, iswait=True):
         """Initialize instance variables and check for consistent input stream shapes."""
         torch.backends.cudnn.benchmark = True  # faster for fixed-size inference
         self.buffer = buffer  # buffer input streams
@@ -51,8 +51,10 @@ class LoadStreams:
             self.shape[i] = im.shape
             self.threads[i] = Thread(target=self.update, args=([i, self.caps[i], s]), daemon=True)
             LOGGER.info(f'{st}Success ✅ ({self.frames[i]} frames of shape {w}x{h} at {self.fps[i]:.2f} FPS)')
-            self.threads[i].start()
-        LOGGER.info('')  # newline
+            if not iswait:
+                self.threads[i].start()
+        str_log = 'waiting for starting threads..\n' if iswait else ''
+        LOGGER.info(str_log)  # newline
 
         # Check for common shapes
         self.bs = self.__len__()
@@ -61,7 +63,7 @@ class LoadStreams:
         """Read stream `i` frames in daemon thread."""
         n, f = 0, self.frames[i]  # frame number, frame array
         while self.running and cap.isOpened() and n < (f - 1):
-            if len(self.imgs[i]) < 30:  # keep a <=30-image buffer
+            if len(self.imgs[i]) < 10:  # keep a <=30-image buffer
                 n += 1
                 cap.grab()  # .read() = .grab() followed by .retrieve()
                 if n % self.vid_stride == 0:

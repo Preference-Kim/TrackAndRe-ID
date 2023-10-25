@@ -53,7 +53,7 @@ fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 threads = [] 
 for i, cap in enumerate(capture_gen):
     thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.01, 0.85) # #outputs, conf_threshold=0.25, iou_threshold=0.45
-    thread.record = True
+    thread.save = True
     thread.stride = 12
     thread.buf_dir = 'images/buf-l-2023-10-20-1'
     thread.daemon = True
