@@ -2,12 +2,13 @@ import os
 from copy import deepcopy
 from threading import Thread
 
+import random
 import cv2
 import numpy as np
 import torch
 
 from . import bt_util
-from .gallery_manager import GalleryManager, ReidMap
+from .gallery_manager import ReIDManager, ReidMap
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
@@ -57,14 +58,13 @@ class TrackCamThread(Thread):
                             cropped = deepcopy(frame[y1:y2, x1:x2])
                             if cropped is not None and cropped.size > 0:
                                 if self.reid_man is not None:
-                                    self.reid_man.update(cropped, index, self.idx, self.count)
+                                    self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, record = self.record)
                                     if ReidMap.get_reid(index) == -1:
                                         if self.reid_man.features[index].shape[0]<30:
                                             self.reid_man.remap_id(index)
+                                            self.reid_man.sync_id(index, self.idx)
                                         else:
                                             self.reid_man.sync_id(index, self.idx)
-                                if self.record:
-                                    cv2.imwrite(f'{self.buf_dir}/id{index}_cam{self.idx}_{self.count}.jpg', cropped)
                         if index in ReidMap.id_map.keys():
                             draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
                         else:
@@ -122,8 +122,8 @@ class TrackCamThread(Thread):
 def draw_line_unsync(image, x1, y1, x2, y2, index):
     w = 10
     h = 10
-    color = (0, 200, 0)
-    cv2.rectangle(image, (x1, y1), (x2, y2), (200, 200, 0), 2)
+    color = (0, 250, 0)
+    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 100, 100), 2)
     # Top left corner
     cv2.line(image, (x1, y1), (x1 + w, y1), color, 3)
     cv2.line(image, (x1, y1), (x1, y1 + h), color, 3)
@@ -143,32 +143,34 @@ def draw_line_unsync(image, x1, y1, x2, y2, index):
     text = f'ID:{str(index)}'
     cv2.putText(image, text,
                 (x1, y1 - 2),
-                0, 1 / 2, (0, 255, 0),
+                0, 1 / 2, color,
                 thickness=1, lineType=cv2.FILLED)
 
 def draw_line_sync(image, x1, y1, x2, y2, index):
     w = 10
     h = 10
-    color = (200, 0, 0)
-    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 200), 4)
+    random.seed(index)
+    color = (random.randint(30, 255), random.randint(30, 255), random.randint(30, 255))
+    color_edge = (0,250,30)
+    cv2.rectangle(image, (x1, y1), (x2, y2), color, 4)
     # Top left corner
-    cv2.line(image, (x1, y1), (x1 + w, y1), color, 4)
-    cv2.line(image, (x1, y1), (x1, y1 + h), color, 4)
+    cv2.line(image, (x1, y1), (x1 + w, y1), color_edge, 4)
+    cv2.line(image, (x1, y1), (x1, y1 + h), color_edge, 4)
 
     # Top right corner
-    cv2.line(image, (x2, y1), (x2 - w, y1), color, 4)
-    cv2.line(image, (x2, y1), (x2, y1 + h), color, 4)
+    cv2.line(image, (x2, y1), (x2 - w, y1), color_edge, 4)
+    cv2.line(image, (x2, y1), (x2, y1 + h), color_edge, 4)
 
     # Bottom right corner
-    cv2.line(image, (x2, y2), (x2 - w, y2), color, 4)
-    cv2.line(image, (x2, y2), (x2, y2 - h), color, 4)
+    cv2.line(image, (x2, y2), (x2 - w, y2), color_edge, 4)
+    cv2.line(image, (x2, y2), (x2, y2 - h), color_edge, 4)
 
     # Bottom left corner
-    cv2.line(image, (x1, y2), (x1 + w, y2), color, 4)
-    cv2.line(image, (x1, y2), (x1, y2 - h), color, 4)
+    cv2.line(image, (x1, y2), (x1 + w, y2), color_edge, 4)
+    cv2.line(image, (x1, y2), (x1, y2 - h), color_edge, 4)
 
     text = f'ReID:{str(index)}'
     cv2.putText(image, text,
-                (x1, y1 - 2),
-                0, 1 / 2, (0, 0, 255),
-                thickness=1, lineType=cv2.FILLED)
+                (x1, y1 - 10),
+                0, 2/3, color, #0, 1/2, color,
+                thickness=3, lineType=cv2.FILLED) #thickness=1
