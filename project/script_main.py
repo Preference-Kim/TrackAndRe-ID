@@ -32,14 +32,14 @@ LOGGER.info("Create Feature Extractor with calibration.....")
 pixel_mean, pixel_std = get_pixel_params(sources=rtsp_sources, vid_stride=1)
 extractor = FeatureExtractor(
     model_name='osnet_ain_x1_0',
-    model_path='/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/model1024.pth.tar-600',#'/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/mars-msmt.pth.tar-60'
+    model_path='/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/OSN_ain_msmt17_softmax.pth',#'/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/mars-msmt.pth.tar-60'
     pixel_mean=pixel_mean,
     pixel_std=pixel_std ,   
     device='cuda' #'cuda:0'
 )
 
 # 2.2. YOLO
-model = torch.load('weights/yolo/v8_n.pt', map_location='cuda')['model'].float()
+model = torch.load('weights/yolo/v8_s.pt', map_location='cuda')['model'].float()
 model.eval()
 model.half()
 
@@ -47,7 +47,7 @@ model.half()
 
 buf_dir = 'images/gallery'
 reid_man = ReIDManager(model=extractor, buf_dir=buf_dir)
-reid_man.min_dist_thres = 0.08
+reid_man.min_dist_thres = 0.1
 reid_man.max_dist_thres = 0.22
 
 """4. Stream loader and cap generator"""
@@ -78,7 +78,7 @@ for i in range(len(streams.sources)):
         conf=0.1, iou=0.85 # original case: conf_threshold=0.25, iou_threshold=0.45
         )
     thread.save = False # whether save images used for features
-    thread.stride = 30 #8
+    thread.stride = 8 #8
     thread.reid_man = reid_man
     thread.buf_dir = 'images/gallery'
     thread.daemon = True

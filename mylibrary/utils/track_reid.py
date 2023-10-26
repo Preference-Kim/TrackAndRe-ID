@@ -35,6 +35,7 @@ class TrackCamThread(Thread):
     def run(self):
         os.makedirs(self.buf_dir, exist_ok=True)
         while self.running:
+            self.count += 1
             frame = self.input_queue.get()
             outputs = self.track(frame)
             self.frame_ant = frame.copy()
