@@ -18,9 +18,9 @@ from mylibrary.utils.display import MakeVideo
 """1. RTSP sources"""
 # List of multiple RTSP sources
 rtsp_sources = [
-    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/101',
+    #'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/101',
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/201',
-    #'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/301',
+    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/301',
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/401',
     'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/501',
 ]
@@ -53,16 +53,13 @@ reid_man.max_dist_thres = 0.22
 """4. Stream loader and cap generator"""
 
 # Create a queue for frames to be displayed in the main thread
-frames_queue = [queue.Queue() for _ in rtsp_sources]
+output_queues = [queue.Queue() for _ in rtsp_sources]
 
 # Initialize the LoadStreams class
-streams = LoadStreams(sources=rtsp_sources, imgsz=640, buffer=True, iswait=True)
+streams = LoadStreams(sources=rtsp_sources, buffersz=30, iswait=True)
 num_src = len(rtsp_sources)
 fps = streams.fps[0]
 resolution = streams.shape[0]
-
-# Create a generator for VideoCapture objects
-capture_gen = streams.cap_gen()
 
 # Create VideoWriters for each source
 video_man = MakeVideo(isrecord=False, mode='monoview', num_src=num_src, res=resolution, fps=fps, outdir='/home/sunhokim/Pictures')
@@ -71,8 +68,15 @@ video_man = MakeVideo(isrecord=False, mode='monoview', num_src=num_src, res=reso
 
 # Create threads for each video source
 threads = []
-for i, cap in enumerate(capture_gen):
-    thread = TrackCamThread(model, i, streams.fps[i], streams.imgsz, cap, frames_queue[i], 0.1, 0.85) # #outputs, conf_threshold=0.25, iou_threshold=0.45
+for i in range(len(streams.sources)):
+    thread = TrackCamThread(
+        model=model, 
+        streams=streams, 
+        idx=i, 
+        sz=640, 
+        output_queue=output_queues[i], 
+        conf=0.1, iou=0.85 # original case: conf_threshold=0.25, iou_threshold=0.45
+        )
     thread.save = False # whether save images used for features
     thread.stride = 30 #8
     thread.reid_man = reid_man
@@ -92,6 +96,6 @@ print(f"\nSTARTING::::💡 current number of running threads: {active_count()}\n
 """6. Displaying"""
 
 # display and save(optional) frames
-video_man.monitoring(streams=streams, frames_queue=frames_queue)
+video_man.monitoring(streams=streams, frames_queue=output_queues)
 
 print(f"\nFINISHED::::💡 current number of running threads: {active_count()}")

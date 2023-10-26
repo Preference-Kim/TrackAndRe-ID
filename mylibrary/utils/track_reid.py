@@ -12,14 +12,15 @@ from .gallery_manager import ReidMap
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
-    def __init__(self, model, idx, fps, sz, cap, frames_queue, conf=0.001, iou=0.1):
+    def __init__(self, model, streams, idx, sz, output_queue, conf=0.001, iou=0.1):
         super(TrackCamThread, self).__init__()
         self.model = model
         self.idx = idx
-        self.fps = fps
+        self.fps = streams.fps[idx]
         self.sz = sz
-        self.cap = cap
-        self.frames_queue = frames_queue
+        self.running = streams.running
+        self.input_queue = streams.queues[idx]
+        self.output_queue = output_queue
         self.conf = conf
         self.iou = iou
         self.bt = bt.BYTETracker(self.fps)
@@ -33,44 +34,40 @@ class TrackCamThread(Thread):
     
     def run(self):
         os.makedirs(self.buf_dir, exist_ok=True)
-        while self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-            else:
-                self.count += 1
-                outputs = self.track(frame)
-                self.frame_ant = frame.copy()
-                if len(outputs) > 0:
-                    boxes = outputs[:, :4]
-                    identities = outputs[:, 4]
-                    if  self.reid_man is not None:
-                        ids = [int(x) for x in identities] if identities is not None else [-1]
-                        self.reid_man.list_actives(ids=ids,cam=self.idx)
-                    object_classes = outputs[:, 6]
-                    for i, box in enumerate(boxes):
-                        if object_classes[i] != 0:  # 0 is for person class (COCO)
-                            continue
-                        x1, y1, x2, y2 = list(map(int, box))
-                        # get ID of object
-                        index = int(identities[i]) if identities is not None else 0
-                        if self.count%self.stride == 0 :
-                            cropped = deepcopy(frame[y1:y2, x1:x2])
-                            if cropped is not None and cropped.size > 0:
-                                if self.reid_man is not None:
-                                    self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
-                                    if ReidMap.get_reid(index) == -1:
-                                        if self.reid_man.features[index].shape[0]<30:
-                                            self.reid_man.remap_id(index)
-                                            self.reid_man.sync_id(index, self.idx)
-                                        else:
-                                            self.reid_man.sync_id(index, self.idx)
-                        if index in ReidMap.id_map.keys():
-                            draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
-                        else:
-                            draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
+        while self.running:
+            frame = self.input_queue.get()
+            outputs = self.track(frame)
+            self.frame_ant = frame.copy()
+            if len(outputs) > 0:
+                boxes = outputs[:, :4]
+                identities = outputs[:, 4]
+                if  self.reid_man is not None:
+                    ids = [int(x) for x in identities] if identities is not None else [-1]
+                    self.reid_man.list_actives(ids=ids,cam=self.idx)
+                object_classes = outputs[:, 6]
+                for i, box in enumerate(boxes):
+                    if object_classes[i] != 0:  # 0 is for person class (COCO)
+                        continue
+                    x1, y1, x2, y2 = list(map(int, box))
+                    # get ID of object
+                    index = int(identities[i]) if identities is not None else 0
+                    if self.count%self.stride == 0 :
+                        cropped = deepcopy(frame[y1:y2, x1:x2])
+                        if cropped is not None and cropped.size > 0:
+                            if self.reid_man is not None:
+                                self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
+                                if ReidMap.get_reid(index) == -1:
+                                    if self.reid_man.features[index].shape[0]<30:
+                                        self.reid_man.remap_id(index)
+                                        self.reid_man.sync_id(index, self.idx)
+                                    else:
+                                        self.reid_man.sync_id(index, self.idx)
+                    if index in ReidMap.id_map.keys():
+                        draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
+                    else:
+                        draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
             
-            self.frames_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
+            self.output_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
     
     def track(self,frame):
         boxes = []
