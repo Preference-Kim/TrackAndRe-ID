@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Reference: Ultralytics YOLO 🚀, AGPL-3.0 license
 
 import contextlib
 import inspect
@@ -8,7 +8,7 @@ import platform
 import re
 import subprocess
 import sys
-import threading
+import threading, queue
 import urllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,63 +35,6 @@ LOGGING_NAME = 'reid'
 
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ['Darwin', 'Linux', 'Windows'])  # environment booleans
 ARM64 = platform.machine() in ('arm64', 'aarch64')  # ARM64 booleans
-HELP_MSG = \
-    """
-    Usage examples for running YOLOv8:
-
-    1. Install the ultralytics package:
-
-        pip install ultralytics
-
-    2. Use the Python SDK:
-
-        from ultralytics import YOLO
-
-        # Load a model
-        model = YOLO('yolov8n.yaml')  # build a new model from scratch
-        model = YOLO("yolov8n.pt")  # load a pretrained model (recommended for training)
-
-        # Use the model
-        results = model.train(data="coco128.yaml", epochs=3)  # train the model
-        results = model.val()  # evaluate model performance on the validation set
-        results = model('https://ultralytics.com/images/bus.jpg')  # predict on an image
-        success = model.export(format='onnx')  # export the model to ONNX format
-
-    3. Use the command line interface (CLI):
-
-        YOLOv8 'yolo' CLI commands use the following syntax:
-
-            yolo TASK MODE ARGS
-
-            Where   TASK (optional) is one of [detect, segment, classify]
-                    MODE (required) is one of [train, val, predict, export]
-                    ARGS (optional) are any number of custom 'arg=value' pairs like 'imgsz=320' that override defaults.
-                        See all ARGS at https://docs.ultralytics.com/usage/cfg or with 'yolo cfg'
-
-        - Train a detection model for 10 epochs with an initial learning_rate of 0.01
-            yolo detect train data=coco128.yaml model=yolov8n.pt epochs=10 lr0=0.01
-
-        - Predict a YouTube video using a pretrained segmentation model at image size 320:
-            yolo segment predict model=yolov8n-seg.pt source='https://youtu.be/LNwODJXcvt4' imgsz=320
-
-        - Val a pretrained detection model at batch-size 1 and image size 640:
-            yolo detect val model=yolov8n.pt data=coco128.yaml batch=1 imgsz=640
-
-        - Export a YOLOv8n classification model to ONNX format at image size 224 by 128 (no TASK required)
-            yolo export model=yolov8n-cls.pt format=onnx imgsz=224,128
-
-        - Run special commands:
-            yolo help
-            yolo checks
-            yolo version
-            yolo settings
-            yolo copy-cfg
-            yolo cfg
-
-    Docs: https://docs.ultralytics.com
-    Community: https://community.ultralytics.com
-    GitHub: https://github.com/ultralytics/ultralytics
-    """
 
 # Settings
 torch.set_printoptions(linewidth=320, precision=4, profile='default')
@@ -100,6 +43,19 @@ cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with Py
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # for deterministic training
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress verbose TF compiler warnings in Colab
+
+class MyQueue(queue.Queue):
+    def __init__(self, maxsize=0):
+        super().__init__(maxsize)
+        self.running = True  # Flag to track whether get() method has been called
+
+    def get(self, block=True, timeout=None):
+        self.running = True  # Track that the get() method has been called
+        return super().get(block, timeout)
+    
+    def put(self, item, block=True, timeout=None):
+        self.running = False
+        super().put(item, block, timeout)
 
 class SimpleClass:
     """

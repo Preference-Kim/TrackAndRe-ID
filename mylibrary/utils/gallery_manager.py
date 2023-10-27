@@ -123,29 +123,25 @@ class ReIDManager:
         """update distinctive feature"""
         im_feat = self.extractor([im])
         reid = ReidMap.get_reid(id)
-        fs = self.features.copy()
         if reid ==-1:
+            fs = self.features.copy()
             if id in fs:
                 distmat = metrics.compute_distance_matrix(im_feat, self.features[id], metric='cosine')
-                min_dist = torch.min(distmat).item()
-                if min_dist>self.min_dist_thres:
+                if not (distmat<self.min_dist_thres).any():
                     self.features[id]=torch.cat((self.features[id], im_feat),dim=0)
                     cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
             else:
                 self.features[id] = im_feat
                 cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
         else:
-            min_dist = 1
             K = ReIDManager._cam.copy()
-            for i in K.keys():
+            for i in K:
                 if i!=-1 and ReidMap.id_map.get(i,-1)==reid:
                     distmat = metrics.compute_distance_matrix(im_feat, self.features[id], metric='cosine')
-                    min_dismat = torch.min(distmat).item()
-                    if min_dismat < min_dist:
-                        min_dist = min_dismat
-            if min_dist>self.min_dist_thres:
-                self.features[id] = torch.cat((self.features[id], im_feat),dim=0)
-                cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+                    if (distmat<self.min_dist_thres).any():
+                        return
+            self.features[id] = torch.cat((self.features[id], im_feat),dim=0)
+            cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
     
     def sync_id(self, id, cam):
         """

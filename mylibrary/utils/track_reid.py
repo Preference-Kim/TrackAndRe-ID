@@ -34,7 +34,7 @@ class TrackCamThread(Thread):
     
     def run(self):
         os.makedirs(self.buf_dir, exist_ok=True)
-        while self.running:
+        while self.running():
             self.count += 1
             frame = self.input_queue.get()
             outputs = self.track(frame)
@@ -52,24 +52,25 @@ class TrackCamThread(Thread):
                     x1, y1, x2, y2 = list(map(int, box))
                     # get ID of object
                     index = int(identities[i]) if identities is not None else 0
-                    if self.count%self.stride == 0 :
-                        cropped = deepcopy(frame[y1:y2, x1:x2])
-                        if cropped is not None and cropped.size > 0:
-                            if self.reid_man is not None:
-                                self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
-                                if ReidMap.get_reid(index) == -1:
-                                    if self.reid_man.features[index].shape[0]<30:
-                                        self.reid_man.remap_id(index)
-                                        self.reid_man.sync_id(index, self.idx)
-                                    else:
-                                        self.reid_man.sync_id(index, self.idx)
-                    if index in ReidMap.id_map.keys():
-                        draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
-                    else:
-                        draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
-            
+                    if self.reid_man is not None:
+                        if self.count%self.stride == 0 :
+                            reid = ReidMap.get_reid(index)
+                            if reid in (-1,index):
+                                cropped = frame[y1:y2, x1:x2]
+                                if cropped is not None and cropped.size > 0:
+                                    self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
+                                if reid == -1:                                
+                                    if index in self.reid_man.features:
+                                        if self.reid_man.features[index].shape[0]<10:
+                                            self.reid_man.remap_id(index)
+                                        if self.reid_man.features[index].shape[0]>2:
+                                            self.reid_man.sync_id(index, self.idx)                      
+                        if index in ReidMap.id_map.keys():
+                            draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
+                        else:
+                            draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
             self.output_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
-    
+
     def track(self,frame):
         boxes = []
         confidences = []

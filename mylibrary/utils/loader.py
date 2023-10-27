@@ -1,7 +1,6 @@
 import os, time
 from pathlib import Path
 from threading import Thread
-import queue
 
 import math, cv2
 import numpy as np
@@ -9,8 +8,13 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
-from . import LOGGER
-from . import ops
+from . import LOGGER, ops, MyQueue
+
+class Running:
+    def __init__(self):
+        self.state = True
+    def __call__(self):
+        return self.state
 
 class LoadStreams:
     """references: YOLOv8 streamloader, i.e. `yolo predict source='rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`."""
@@ -18,7 +22,7 @@ class LoadStreams:
     def __init__(self, sources='file.streams', vid_stride=1, buffersz=30, iswait=True):
         """Initialize instance variables and check for consistent input stream shapes."""
         torch.backends.cudnn.benchmark = True  # faster for fixed-size inference
-        self.running = True  # running flag for Thread
+        self.running = Running()  # running flag for Thread
         self.mode = 'stream'
         self.vid_stride = vid_stride  # video frame-rate stride
         sources = sources if isinstance(sources, list) else Path(sources).read_text().rsplit() if os.path.isfile(sources) else [sources]
@@ -26,7 +30,7 @@ class LoadStreams:
         self.sources = [ops.clean_str(x) for x in sources]  # clean source names for later
         self.imgs, self.fps, self.frames, self.threads, self.shape = [None] * n, [0] * n, [0] * n, [None] * n, [[]] * n
         self.caps = [None] * n  # video capture objects
-        self.queues = [queue.Queue(maxsize=buffersz) for _ in range(n)]
+        self.queues = [MyQueue(maxsize=buffersz) for _ in range(n)]
         for i, s in enumerate(sources):  # index, source
             # Start thread to read frames from video stream
             st = f'{i + 1}/{n}: {s}... '
@@ -62,11 +66,11 @@ class LoadStreams:
     def update(self, i, cap, stream):
         """Put stream `i` frames into Queues in daemon thread."""
         n, f = 0, self.frames[i]  # frame number, frame array ( * f=inf in usual)
-        while self.running and cap.isOpened() and n < (f - 1):
+        while self.running() and cap.isOpened() and n < (f - 1):
             if not self.queues[i].full():
                 n += 1
                 cap.grab()  # .read() = .grab() followed by .retrieve()
-                if n % self.vid_stride == 0:
+                if self.queues[i].running and n % self.vid_stride == 0:
                     success, im = cap.retrieve()
                     if not success:
                         im = np.zeros(self.shape[i], dtype=np.uint8)
@@ -74,11 +78,11 @@ class LoadStreams:
                         cap.open(stream)  # re-open stream if signal was lost
                     self.queues[i].put(im)
             else:
-                time.sleep(0.05)  # wait until the buffer is empty
+                time.sleep(0.01)  # wait until the buffer is empty
 
     def close(self):
         """Close stream loader and release resources."""
-        self.running = False  # stop flag for Thread
+        self.running.state = False  # stop flag for Thread
         for thread in self.threads:
             if thread.is_alive():
                 thread.join(timeout=5)  # Add timeout

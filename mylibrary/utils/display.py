@@ -2,6 +2,8 @@ import os, datetime
 import cv2
 import numpy as np
 
+from . import LOGGER
+
 class MakeVideo:
     
     _grid_map = { # num_frame(int) : (num_rows(int), num_cols(int)) (tuple)
@@ -14,6 +16,7 @@ class MakeVideo:
         }
     _imgsz = (
         (720,480),
+        (854,480),
         (1280,720),
         ) # reverted for resizing function
     
@@ -86,6 +89,7 @@ class MakeVideo:
                         for video_writer in self.video_writers:
                             if video_writer is not None:
                                 video_writer.release()
+                        LOGGER.info(f'\n☕ Result Video has been successfully saved \n   out_dir:{self.outdir}')
 
                     streams.close()
                     cv2.destroyAllWindows()

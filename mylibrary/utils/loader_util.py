@@ -6,7 +6,7 @@ import numpy as np
 
 from . import LOGGER
 
-def get_pixel_params(sources, vid_stride=3):
+def get_pixel_params(sources, vid_stride=3, count=1):
     sources = sources if isinstance(sources, list) else Path(sources).read_text().rsplit() if os.path.isfile(sources) else [sources]
     
     pixel_values = []
@@ -18,7 +18,7 @@ def get_pixel_params(sources, vid_stride=3):
 
         n = 0
 
-        while n<5:
+        while n<count:
             ret, frame = cap.read()
             
             if not ret:
@@ -39,7 +39,7 @@ def get_pixel_params(sources, vid_stride=3):
     pixel_mean = np.mean(pixel_values, axis=0)/255.0
     pixel_std = np.std(pixel_values, axis=0)/255.0
 
-    LOGGER.info(f"✅ Pixel Mean:                {pixel_mean}")
-    LOGGER.info(f"✅ Pixel Standard Deviation:  {pixel_std}")
+    LOGGER.info(f"📷 Pixel Mean:                {pixel_mean}")
+    LOGGER.info(f"📷 Pixel Standard Deviation:  {pixel_std}\n")
     
     return pixel_mean, pixel_std
