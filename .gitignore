@@ -1,6 +1,7 @@
 # Confidential
 images/
 docs/re-ID.dataset/*.pdf
+weights/reid/myweights/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
