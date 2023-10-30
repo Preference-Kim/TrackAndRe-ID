@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from . import bt_util
-from .gallery_manager import ReidMap
+from .gallery_manager import ReidMap, Features
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
@@ -60,10 +60,10 @@ class TrackCamThread(Thread):
                                 if cropped is not None and cropped.size > 0:
                                     self.reid_man.update(im = cropped, id = index, cam = self.idx, count = self.count, issave = self.save)
                                 if reid == -1:                                
-                                    if index in self.reid_man.features:
-                                        if self.reid_man.features[index].shape[0]<10:
+                                    if index in Features.fs:
+                                        if Features.fs[index].shape[0]<10:
                                             self.reid_man.remap_id(index)
-                                        if self.reid_man.features[index].shape[0]>2:
+                                        if Features.fs[index].shape[0]>2:
                                             self.reid_man.sync_id(index, self.idx)                      
                         if index in ReidMap.id_map.keys():
                             draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])

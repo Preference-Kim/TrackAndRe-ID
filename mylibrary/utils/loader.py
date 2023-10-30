@@ -13,6 +13,7 @@ from . import LOGGER, ops, MyQueue
 class Running:
     def __init__(self):
         self.state = True
+        
     def __call__(self):
         return self.state
 
@@ -78,6 +79,7 @@ class LoadStreams:
                         cap.open(stream)  # re-open stream if signal was lost
                     self.queues[i].put(im)
             else:
+                _, _ = cap.retrieve()
                 time.sleep(0.01)  # wait until the buffer is empty
 
     def close(self):
