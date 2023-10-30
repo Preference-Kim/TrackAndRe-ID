@@ -1,8 +1,8 @@
 # Confidential
-images/
+images
 docs/re-ID.dataset/*.pdf
-weights/reid/myweights/
-project/newdataset/
+weights/reid/myweights
+project/newdataset
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
