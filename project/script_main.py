@@ -22,6 +22,7 @@ is_save = True
 is_record = True
 min_dist_thres = 0.08
 max_dist_thres = 0.14
+buf_dir = f'images/gallery_{min_dist_thres}_{max_dist_thres}'
 
 """1. RTSP sources"""
 # List of multiple RTSP sources
@@ -60,7 +61,6 @@ model.half()
 
 """3. Reid manager(ReID)"""
 
-buf_dir = f'images/gallery_{min_dist_thres}_{max_dist_thres}'
 reid_mans = []
 for i,extr in enumerate(extractors):
     reid_mans.append(ReIDManager(model=extr, buf_dir=buf_dir))
