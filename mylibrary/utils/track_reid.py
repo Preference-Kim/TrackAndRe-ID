@@ -29,11 +29,9 @@ class TrackCamThread(Thread):
         self.frame_ant = None
         self.save = True
         self.stride = 3
-        self.buf_dir = 'images/buf'
         self.reid_man = None
     
     def run(self):
-        os.makedirs(self.buf_dir, exist_ok=True)
         while self.running():
             self.count += 1
             frame = self.input_queue.get()

@@ -3,6 +3,7 @@ images
 docs/re-ID.dataset/*.pdf
 weights/reid/myweights
 project/newdataset
+project/notebooks
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
