@@ -47,14 +47,14 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress verbose TF compiler warning
 class MyQueue(queue.Queue):
     def __init__(self, maxsize=0):
         super().__init__(maxsize)
-        self.running = True  # Flag to track whether get() method has been called
+        self.ready = True  # Flag to track whether get() method has been called
 
     def get(self, block=True, timeout=None):
-        self.running = True  # Track that the get() method has been called
+        self.ready = True  # Track that the get() method has been called
         return super().get(block, timeout)
     
     def put(self, item, block=True, timeout=None):
-        self.running = False
+        self.ready = False
         super().put(item, block, timeout)
 
 class SimpleClass:

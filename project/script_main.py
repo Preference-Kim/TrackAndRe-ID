@@ -4,117 +4,155 @@ from threading import active_count
 import queue 
 import torch
 
-"""import reid library"""
-sys.path.append("/home/sunhokim/Documents/mygit/TrackAndRe-ID")
-#from torchreid.utils import FeatureExtractor
-
 """import my library"""
-sys.path.append("/home/sunhokim/Documents/mygit/TrackAndRe-ID/mylibrary")
-from mylibrary import ReIDManager, LoadStreams, TrackCamThread, MakeVideo
+from mylibrary import ReIDManager, LoadStreams, TrackCamThread, ReIDThread, MakeVideo
 from mylibrary.utils.loader_util import get_pixel_params,  get_pixel_params_filtered, get_pixel_params_mask
 from mylibrary.utils import LOGGER
-from mylibrary.nets import FeatureExtractor
+from mylibrary.nets import FeatureExtractor, get_classsz
 
-LOGGER.info(f"\nINIT::::💡 current number of running threads: {active_count()}\n")
+def run():
+    LOGGER.info(f"\nINIT::::💡 current number of running threads: {active_count()}\n")
 
-"""0. system params"""
-is_save = True
-is_record = True
-min_dist_thres = 0.08
-max_dist_thres = 0.14
+    """0. system params"""
 
-"""1. RTSP sources"""
-# List of multiple RTSP sources
-rtsp_sources = [
-    #'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/101',
-    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/201',
-    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/301',
-    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/401',
-    'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/501',
-]
+    is_reid = False
+    reid_stride = 8  #8
+    queue_capacity = 0 #0:infinite
+    is_calibrate = False
+    min_dist_thres = 0.1
+    max_dist_thres = 0.17
 
-"""2. MODEL"""
+    is_save = False
+    is_record = False
+    buf_dir = f'images/1103/gallery_{min_dist_thres}_{max_dist_thres}'
+    video_dir = '/home/sunho/Pictures/1103'
 
-# 2.1. Reid
+    """1. RTSP sources"""
+    # List of multiple RTSP sources
+    rtsp_sources = [
+        #'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/101',
+        'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/201',
+        'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/301',
+        'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/401',
+        'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/501',
+    ]
 
-LOGGER.info("Create Feature Extractor with calibration.....")
-extractors = []
-for src in rtsp_sources:
-    pixel_mean, pixel_std = get_pixel_params_mask(sources=src, vid_stride=3, count=5, threshold=(235, 235, 235))
-    extractors.append(
-            FeatureExtractor(
-                model_name='osnet_ain_x1_0',
-                model_path='/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1031_cuda0.pth',#'/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/mars-msmt.pth.tar-60'
-                verbose=False,
-                num_classes=5638, # refer to dictionary in pth file
-                pixel_norm=True,
-                pixel_mean=pixel_mean,
-                #pixel_std=pixel_std,   
-                device='cuda:0' #'cuda:0'
-            ))
+    """2. MODEL"""
 
-# 2.2. YOLO
-model = torch.load('weights/yolo/v8_l.pt', map_location='cuda')['model'].float()
-model.eval()
-model.half()
+    # 2.1. Reid
 
-"""3. Reid manager(ReID)"""
+    if is_reid:
+        LOGGER.info("Create Feature Extractor with calibration.....")
+        extractors = []
+        
+        weight_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1103.vidsoft_cuda0.pth'
+        num_cls=get_classsz(fpath=weight_path)
+        
+        for src in rtsp_sources:
+            pixel_mean, pixel_std = get_pixel_params_mask(sources=src, vid_stride=3, count=5, threshold=(235, 235, 235)) if is_calibrate else [0.485, 0.456, 0.406], [0.229, 0.224, 0.225] # ImageNet statistics
+            extractors.append(
+                    FeatureExtractor(
+                        model_name='osnet_ain_x1_0',
+                        model_path=weight_path,#'/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/mars-msmt.pth.tar-60'
+                        verbose=False,
+                        num_classes=num_cls, # refer to dictionary in pth file
+                        pixel_norm=True,
+                        pixel_mean=pixel_mean,
+                        pixel_std=pixel_std,   
+                        device='cuda:0' #'cuda:0'
+                    ))
 
-buf_dir = f'images/gallery_{min_dist_thres}_{max_dist_thres}'
-reid_mans = []
-for i,extr in enumerate(extractors):
-    reid_mans.append(ReIDManager(model=extr, buf_dir=buf_dir))
-    reid_mans[i].min_dist_thres = min_dist_thres 
-    reid_mans[i].max_dist_thres = max_dist_thres 
-LOGGER.info("")
+    # 2.2. YOLO
+    yolo = torch.load('weights/yolo/v8_x.pt', map_location='cuda')['model'].float()
+    yolo.eval()
+    yolo.half()
 
-"""4. Stream loader"""
+    """3. Reid manager(ReID)"""
+    if is_reid:
+        reid_mans = []
+        for i,extr in enumerate(extractors):
+            reid_mans.append(ReIDManager(model=extr, buf_dir=buf_dir))
+            reid_mans[i].min_dist_thres = min_dist_thres 
+            reid_mans[i].max_dist_thres = max_dist_thres 
+        LOGGER.info("")
+        num_set=3
+    else:
+        LOGGER.info("💤 ReID module is deactivated. Change \'is_reid\' if you want\n")
+        num_set=2
 
-# Create a queue for frames to be displayed in the main thread
-output_queues = [queue.Queue() for _ in rtsp_sources]
+    """4. Stream loader"""
 
-# Initialize the LoadStreams class
-streams = LoadStreams(sources=rtsp_sources, buffersz=15, iswait=True)
-num_src = len(rtsp_sources)
-fps = streams.fps[0]
-resolution = streams.shape[0]
+    # Create a queue for frames to be displayed in the main thread
+    output_queues = [queue.Queue() for _ in rtsp_sources]
 
-# Create VideoWriters for each source
-video_man = MakeVideo(isrecord=is_record, mode='monoview', num_src=num_src, res=resolution, fps=fps, outdir='/home/sunhokim/Pictures')
-
-"""5. Threading"""
-
-# Create threads for each video source
-threads = []
-for i in range(len(streams.sources)):
-    thread = TrackCamThread(
-        model=model, 
-        streams=streams, 
-        idx=i, 
-        sz=640, 
-        output_queue=output_queues[i], 
-        conf=0.03, iou=0.85 # original case: conf_threshold=0.25, iou_threshold=0.45
+    # Initialize the LoadStreams class
+    streams = LoadStreams(
+        sources=rtsp_sources, 
+        vid_stride=1, 
+        buffersz=queue_capacity, 
+        iswait=True, 
+        is_stack=True
         )
-    thread.save = is_save # whether save images used for features
-    thread.stride = 8 #8
-    thread.reid_man = reid_mans[i]
-    thread.daemon = True
-    threads.append(streams.threads[i])
-    threads.append(thread)
+    num_src = len(rtsp_sources)
+    fps = streams.fps[0]
+    resolution = streams.shape[0]
 
-# Start threads
-for n,t in enumerate(threads):
-    t.start()
-    if n%2-1 == 0:
-        LOGGER.info(f'Streaming and TrackCam Thread for cam {n//2} has been successfully started ✅')
+    # Create VideoWriters for each source
+    video_man = MakeVideo(isrecord=is_record, mode='monoview', num_src=num_src, res=resolution, fps=fps, outdir=video_dir)
 
-LOGGER.info(f"\nSTARTING::::💡 current number of running threads: {active_count()}\n")
+    """5. Threading"""
 
-"""6. Displaying"""
+    # Create threads for each video source
+    threads = []
+    for i in range(len(streams.sources)):
+        t_track = TrackCamThread(
+            model=yolo, 
+            streams=streams, 
+            camid=i, 
+            sz=640, 
+            output_queue=output_queues[i], 
+            conf=0.05, iou=0.85, # original case: conf_threshold=0.25, iou_threshold=0.45
+            isreid=is_reid,
+            queue_capacity=queue_capacity # infinite
+            )
+        t_track.reid_stride = reid_stride
+        
+        if is_reid:
+            t_reid = ReIDThread(
+                camid = i,
+                streams=streams,
+                feature_man = reid_mans[i],
+                queue = t_track.reid_queue, 
+                issave = is_save            # whether save images used for features
+            )
+        
+        threads.append(streams.threads[i])
+        threads.append(t_track)
+        if is_reid:
+            threads.append(t_reid)
+        
+    # Start threads
+    for n,t in enumerate(threads):
+        t.start()
+        if n%num_set-1 == 0:
+            LOGGER.info(f'Streaming and Track-ReID Thread for cam {n//num_set} has been successfully started ✅')
 
-# display and save(optional) frames
-video_man.monitoring(streams=streams, frames_queue=output_queues)
+    LOGGER.info(f"\nSTARTING::::💡 current number of running threads: {active_count()}\n")
 
-time.sleep(5)
+    """6. Displaying"""
 
-LOGGER.info(f"\nFINISHED::::💡 current number of running threads: {active_count()}")
+    # display and save(optional) frames
+    video_man.monitoring(streams=streams, frames_queue=output_queues)
+
+    time.sleep(5)
+
+    while True:
+        LOGGER.info(f"\nFINISHING::::💡 current number of running threads: {active_count()}")
+        time.sleep(2)
+        if active_count() == 1:
+            break
+
+    LOGGER.info(f"\nDONE! 👋\n\n\n")
+
+if __name__=='__main__':
+    run()

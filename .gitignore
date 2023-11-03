@@ -1,9 +1,10 @@
 # Confidential
 images
 docs/re-ID.dataset/*.pdf
-weights/reid/myweights
+weights
 project/newdataset
 project/notebooks
+x-surv_integration
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

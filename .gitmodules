@@ -1,0 +1,3 @@
+[submodule "torchreid"]
+	path = torchreid
+	url = https://github.com/KaiyangZhou/deep-person-reid.git
