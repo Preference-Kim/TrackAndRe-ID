@@ -70,7 +70,7 @@ class ReidMap:
             id (int): Source id.
             id_dst (int): Destination id.
         """
-        if id_dst in cls.id_map:
+        if id_dst in cls.id_map and cls.id_map[id_dst] != -1:
             reid = cls.id_map[id_dst]
         else:
             cls._count += 1
@@ -91,16 +91,29 @@ class ReidMap:
             int: The reid for the given id.
         """
         if id in cls.id_map:
-            return cls.id_map[id]
+            pass
         else:
-            return -1  # Dummy id    
+            cls.id_map[id] = -1 # Dummy id 
+        return cls.id_map[id]     
 
 class Features:
-    fs = {-1: torch.zeros(1, 512).cuda()}
+    """
+    feature dictionary
+    
+    fs(dict) = {id(int):(feature matrix(torch.Tensor), captured count(list of int))
+    """
+    fs = {-1: [torch.zeros(1, 512).cuda(), [0]]} 
     
     @classmethod
-    def __call__(cls):
-        return cls.fs
+    def __call__(cls, id):
+        if id in cls.fs:
+            return cls.fs[id]
+        else:
+            return [None, [0]]
+        
+    @classmethod
+    def callfs(cls, idx, feature, len):
+        cls.fs[idx] = [feature, [0]*len]
 
 class ReIDManager:
     """
@@ -113,10 +126,12 @@ class ReIDManager:
     def __init__(self, model, buf_dir):
         self.buf_dir = buf_dir
         os.makedirs(self.buf_dir, exist_ok=True)
-        #self.features = Features()
+        self.f = Features()
         self.extractor = model
         self.min_dist_thres = 0.1
         self.max_dist_thres = 0.25
+        self.reiddue = 20
+        self.lifetime = 40
         # TODO State
 
     def load_gallery(self):
@@ -124,31 +139,62 @@ class ReIDManager:
         batches = split_list_into_batches(image_list)
 
         for idx, batch in batches.items():
-            Features.fs[idx]=self.extractor(batch())
+            self.f.callfs(idx, self.extractor(batch()), len(batch()))
 
-    def update(self, im, id, cam, count, issave = False):
+    def update(self, im, id, reid, cam, count, issave = False):
         """update distinctive feature"""
         im_feat = self.extractor([im])
-        reid = ReidMap.get_reid(id)
+        _oldest = 0
         if reid ==-1:
-            fs = Features.fs.copy()
-            if id in fs:
-                distmat = metrics.compute_distance_matrix(im_feat, Features.fs[id], metric='cosine')
-                if not (distmat<self.min_dist_thres).any():
-                    Features.fs[id]=torch.cat((Features.fs[id], im_feat),dim=0)
+            if self.f(id)[1][0]<count-self.reiddue: # if id is sufficiently old
+                ReidMap.map_reid(id, id)
+                return
+            fs, counts = self.f(id)
+            if fs is not None:
+                for n, v in enumerate(counts):
+                    if v<count-self.lifetime:
+                        _oldest = n+1
+                if _oldest == len(counts):
+                    self.f.fs[id] = [im_feat, [count]]
                     cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+                else:
+                    fs = fs[_oldest:]
+                    counts = counts[_oldest:]
+                    distmat = metrics.compute_distance_matrix(im_feat, fs, metric='cosine')
+                    if not (distmat<self.min_dist_thres).any():
+                        self.f.fs[id][0]=torch.cat((fs, im_feat),dim=0)
+                        self.f.fs[id][1]=counts.append(count)
+                        cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+                    else:
+                        self.f.fs[id][0]=fs
+                        self.f.fs[id][1]=counts
             else:
-                Features.fs[id] = im_feat
+                self.f.fs[id] = [im_feat, [count]]
                 cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
         else:
-            K = ReIDManager._cam.copy()
-            for i in K:
-                if i!=-1 and ReidMap.id_map.get(i,-1)==reid:
-                    distmat = metrics.compute_distance_matrix(im_feat, Features.fs[id], metric='cosine')
+            fs, counts = self.f(id)
+            for n, v in enumerate(counts):
+                if v<count-self.lifetime:
+                    _oldest = n+1
+            fs = fs[_oldest:]
+            counts = counts[_oldest:]
+                
+            ids = ReidMap.id_map.copy()
+            for i, r in ids.items():
+                if self.f(i)[1][-1]<count-self.lifetime: # delete out of date feature
+                    del(self.f.fs[i])
+                    del(ReidMap.id_map[i])
+                    continue
+                elif r==reid:
+                    f = fs if i == id else Features[i][0]
+                    distmat = metrics.compute_distance_matrix(im_feat, f, metric='cosine')
                     if (distmat<self.min_dist_thres).any():
                         return
-            Features.fs[id] = torch.cat((Features.fs[id], im_feat),dim=0)
+            self.f.fs[id][0]=torch.cat((fs, im_feat),dim=0)
+            self.f.fs[id][1]=counts.append(count)
             cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+
+        print(f'why?????????????    {self.f.fs[id][1]}')        
     
     def sync_id(self, id, cam):
         """
@@ -160,12 +206,12 @@ class ReIDManager:
         min_distance = 1
 
         gis = ReIDManager._active_ids.copy()
-        for c, ids in gis.items(): #in features.keys() and active
-            if cam == c:
+        for c, ids in gis.items(): #in self.f.keys() and active
+            if c in (cam, -1):
                 continue
             for i in ids:
-                if i in Features.fs:
-                    dismat = metrics.compute_distance_matrix(Features.fs[id], Features.fs[i], metric='cosine')
+                if i in self.f.fs:
+                    dismat = metrics.compute_distance_matrix(self.f(id)[0], self.f(i)[0], metric='cosine')
                     min_dismat = torch.min(dismat).item() 
                     # minimax_dismat = torch.max(dismat).item()
 
@@ -184,17 +230,17 @@ class ReIDManager:
             id (_type_): _description_
             cam (_type_): _description_
         """
-        fs=Features.fs.copy()
         
         min_distance = 1
 
-        for i, f in fs.items():
+        ids = ReidMap.id_map.copy()
+        for i in ids:
             if i == id or i in ReIDManager._active_ids[ReIDManager._cam[i]]:
                 continue
             Acts = ReIDManager._active_ids[ReIDManager._cam[id]]
             if ReidMap.get_reid(i) in [ReidMap.get_reid(ii) for ii in Acts]:
                 continue
-            dismat = metrics.compute_distance_matrix(Features.fs[id], f, metric='cosine')
+            dismat = metrics.compute_distance_matrix(self.f(id)[0], self.f(i)[0], metric='cosine')
             min_dismat = torch.min(dismat).item() 
 
             if min_dismat < min_distance:

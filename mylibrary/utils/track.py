@@ -10,7 +10,7 @@ from .feature_manager import ReidMap, Features
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
-    def __init__(self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, queue_capacity=0):
+    def __init__(self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, reid_stride=3, queue_capacity=0):
         super(TrackCamThread, self).__init__()
         self.model = model
         self.cam = camid
@@ -27,7 +27,7 @@ class TrackCamThread(Thread):
         self.isreid = isreid
         self.reid_queue = MyQueue(maxsize=queue_capacity) if self.isreid else None
         self.frame_ant = None
-        self.reid_stride = 3
+        self.reid_stride = reid_stride
         self.daemon = True
     
     def run(self):
@@ -54,7 +54,7 @@ class TrackCamThread(Thread):
                     else:
                         draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
                 if self.isreid and self.reid_queue.ready and self.count%self.reid_stride == 0 :
-                    msg = (frame, self.count, xys, indices)
+                    msg = (frame, self.count//self.reid_stride, xys, indices)
                     self.reid_queue.put(msg)
             self.output_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
         LOGGER.info(f"👋 Track Thread   for cam {self.cam} is closed")

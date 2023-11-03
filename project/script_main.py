@@ -1,4 +1,4 @@
-import sys, time
+import time
 
 from threading import active_count
 import queue 
@@ -15,12 +15,17 @@ def run():
 
     """0. system params"""
 
-    is_reid = False
+    yolo_series = 'l'
+    track_conf=0.01
+    track_iou=0.7
+    
+    is_reid = True
     reid_stride = 8  #8
+    stepsize = 4
     queue_capacity = 0 #0:infinite
     is_calibrate = False
     min_dist_thres = 0.1
-    max_dist_thres = 0.17
+    max_dist_thres = 0.15
 
     is_save = False
     is_record = False
@@ -63,7 +68,7 @@ def run():
                     ))
 
     # 2.2. YOLO
-    yolo = torch.load('weights/yolo/v8_x.pt', map_location='cuda')['model'].float()
+    yolo = torch.load(f'weights/yolo/v8_{yolo_series}.pt', map_location='cuda')['model'].float()
     yolo.eval()
     yolo.half()
 
@@ -111,18 +116,19 @@ def run():
             camid=i, 
             sz=640, 
             output_queue=output_queues[i], 
-            conf=0.05, iou=0.85, # original case: conf_threshold=0.25, iou_threshold=0.45
+            conf=track_conf, iou=track_iou, # original case: conf_threshold=0.25, iou_threshold=0.45
             isreid=is_reid,
+            reid_stride=reid_stride,
             queue_capacity=queue_capacity # infinite
             )
-        t_track.reid_stride = reid_stride
         
         if is_reid:
             t_reid = ReIDThread(
                 camid = i,
                 streams=streams,
                 feature_man = reid_mans[i],
-                queue = t_track.reid_queue, 
+                queue = t_track.reid_queue,
+                stepsize = stepsize,
                 issave = is_save            # whether save images used for features
             )
         
