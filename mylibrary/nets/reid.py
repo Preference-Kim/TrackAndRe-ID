@@ -19,6 +19,7 @@ def get_classsz(fpath="/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/my
         state_dict = checkpoint
     
     return state_dict['classifier.bias'].size()[0]
+
 class FeatureExtractor(object):
     """A simple API for feature extraction.
 

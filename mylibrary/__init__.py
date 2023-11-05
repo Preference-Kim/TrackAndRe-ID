@@ -5,4 +5,4 @@ from .utils.reid import ReIDThread
 from .utils.feature_manager import ReIDManager
 from .utils.display import MakeVideo
 
-__all__ = 'LoadStreams','TrackCamThread','ReIDManager','MakeVideo' # allow simpler import
+__all__ = 'LoadStreams','TrackCamThread','ReIDManager','MakeVideo'  # allow simpler import

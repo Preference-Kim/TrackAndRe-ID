@@ -50,7 +50,7 @@ def run():
         LOGGER.info("Create Feature Extractor with calibration.....")
         extractors = []
         
-        weight_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1103.vidsoft_cuda0.pth'
+        weight_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1106.imgtri.cuda0.pth'
         num_cls=get_classsz(fpath=weight_path)
         
         for src in rtsp_sources:
@@ -95,8 +95,8 @@ def run():
         sources=rtsp_sources, 
         vid_stride=1, 
         buffersz=queue_capacity, 
-        iswait=True, 
-        is_stack=True
+        iswait=True
+        # is_stack=True
         )
     num_src = len(rtsp_sources)
     fps = streams.fps[0]

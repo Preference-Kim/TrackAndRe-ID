@@ -20,7 +20,7 @@ class MakeVideo:
         (1280,720),
         ) # reverted for resizing function
     
-    def __init__(self,isrecord=True, mode='monoview', num_src=None, res=None, fps=None, outdir='/home/sunho/Pictures'):
+    def __init__(self,isrecord=True, mode='monoview', num_src=None, res=None, fps=None, outdir='/home/sunhokim/Pictures'):
         assert mode in ['monoview', 'multiview'], "Initialization Error(MakeVideo): Invalid mode. Please choose 'monoview' or 'multiview'."
         self.isrecord = isrecord
         self.mode = mode
@@ -89,9 +89,8 @@ class MakeVideo:
                         for video_writer in self.video_writers:
                             if video_writer is not None:
                                 video_writer.release()
-                        LOGGER.info(f'\n🎁 Result Video has been successfully saved \n   out_dir:{self.outdir}')
+                        LOGGER.info(f'\n☕ Result Video has been successfully saved \n   out_dir:{self.outdir}')
 
-                    LOGGER.info(f"\ndeinitializing,,,")
                     streams.close()
                     cv2.destroyAllWindows()
                     break
@@ -114,7 +113,6 @@ class MakeVideo:
                             if video_writer is not None:
                                 video_writer.release()
 
-                    LOGGER.info(f"\ndeinitializing,,,")
                     streams.close()
                     cv2.destroyAllWindows()
                     break
