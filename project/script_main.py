@@ -7,23 +7,9 @@ import torch
 
 """import my library"""
 from mylibrary import ReIDManager, LoadStreams, TrackCamThread, ReIDThread, MakeVideo
-from mylibrary.utils.loader_util import get_pixel_params,  get_pixel_params_filtered, get_pixel_params_mask
+from mylibrary.process import gen_extractor
 from mylibrary.utils import LOGGER
-from mylibrary.nets import FeatureExtractor, get_classsz
-
-def gen_extractor(src, is_calibrate, weight_path, num_cls):
-    (pixel_mean, pixel_std) = get_pixel_params_mask(sources=src, vid_stride=3, count=5, threshold=(235, 235, 235)) if is_calibrate else ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    extractor = FeatureExtractor(
-        model_name='osnet_ain_x1_0',
-        model_path=weight_path,
-        verbose=False,
-        num_classes=num_cls,
-        pixel_norm=True,
-        pixel_mean=pixel_mean,
-        pixel_std=pixel_std,
-        device='cuda'
-    )
-    return extractor
+from mylibrary.nets import get_classsz
 
 def run():
     LOGGER.info(f"\nINIT::::💡 current number of running threads: {active_count()}\n")
@@ -41,7 +27,7 @@ def run():
     
     is_calibrate = True
     min_dist_thres = 0.1
-    max_dist_thres = 0.15
+    max_dist_thres = 0.2
 
     is_save = False
     is_record = False
@@ -156,7 +142,7 @@ def run():
     # display and save(optional) frames
     video_man.monitoring(streams=streams, frames_queue=output_queues)
 
-    time.sleep(5)
+    time.sleep(3)
 
     while True:
         LOGGER.info(f"\nFINISHING::::💡 current number of running threads: {active_count()}")
@@ -164,7 +150,7 @@ def run():
         if active_count() == 1:
             break
 
-    LOGGER.info(f"\nDONE! 👋\n\n")
+    LOGGER.info(f"\nDONE! 👋\n")
 
 if __name__=='__main__':
     run()

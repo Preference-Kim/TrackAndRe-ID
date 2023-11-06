@@ -33,7 +33,7 @@ class ReIDThread(Thread):
     def run(self):
         while self.running():
             try:
-                (frame, count, boxes, indices) = self.queue.get(timeout=3)
+                (frame, count, boxes, indices) = self.queue.get(timeout=2)
                 if len(indices) > 0:
                     self.manager.list_actives(ids=indices, cam=self.cam)
                 else:
