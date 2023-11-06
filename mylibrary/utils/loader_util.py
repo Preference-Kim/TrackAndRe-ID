@@ -141,10 +141,12 @@ def get_pixel_params_mask(sources, vid_stride=3, count=1, threshold=(210, 210, 2
 
     # Calculate the overall mean and standard deviation
     overall_mean = np.mean(pixel_means, axis=0)
+    overall_mean = np.around(overall_mean, 3).tolist()
     overall_std = np.mean(pixel_stds, axis=0)
+    overall_std = np.around(overall_std, 3).tolist()
 
     LOGGER.info("")
     LOGGER.info(f"📷 Pixel Mean (Excluding Bright Areas):                {overall_mean}")
     LOGGER.info(f"📷 Pixel Standard Deviation (Excluding Bright Areas):  {overall_std}\n")
 
-    return overall_mean, overall_std
+    return (overall_mean, overall_std)

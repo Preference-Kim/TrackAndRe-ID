@@ -1,6 +1,7 @@
 import time
 
 from threading import active_count
+import multiprocessing
 import queue 
 import torch
 
@@ -10,12 +11,26 @@ from mylibrary.utils.loader_util import get_pixel_params,  get_pixel_params_filt
 from mylibrary.utils import LOGGER
 from mylibrary.nets import FeatureExtractor, get_classsz
 
+def gen_extractor(src, is_calibrate, weight_path, num_cls):
+    (pixel_mean, pixel_std) = get_pixel_params_mask(sources=src, vid_stride=3, count=5, threshold=(235, 235, 235)) if is_calibrate else ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    extractor = FeatureExtractor(
+        model_name='osnet_ain_x1_0',
+        model_path=weight_path,
+        verbose=False,
+        num_classes=num_cls,
+        pixel_norm=True,
+        pixel_mean=pixel_mean,
+        pixel_std=pixel_std,
+        device='cuda'
+    )
+    return extractor
+
 def run():
     LOGGER.info(f"\nINIT::::💡 current number of running threads: {active_count()}\n")
 
     """0. system params"""
 
-    yolo_series = 'x'
+    yolo_series = 'm'
     track_conf=0.01
     track_iou=0.7
     
@@ -23,7 +38,8 @@ def run():
     reid_stride = 8  #8
     stepsize = 4
     queue_capacity = 0 #0:infinite
-    is_calibrate = False
+    
+    is_calibrate = True
     min_dist_thres = 0.1
     max_dist_thres = 0.15
 
@@ -47,25 +63,15 @@ def run():
     # 2.1. Reid
 
     if is_reid:
-        LOGGER.info("Create Feature Extractor with calibration.....")
+        LOGGER.info(f"Create Feature Extractor {'with' if is_calibrate else 'without'} calibration.....")
         extractors = []
         
         weight_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1106.imgtri.cuda0.pth'
         num_cls=get_classsz(fpath=weight_path)
         
-        for src in rtsp_sources:
-            pixel_mean, pixel_std = get_pixel_params_mask(sources=src, vid_stride=3, count=5, threshold=(235, 235, 235)) if is_calibrate else [0.485, 0.456, 0.406], [0.229, 0.224, 0.225] # ImageNet statistics
-            extractors.append(
-                    FeatureExtractor(
-                        model_name='osnet_ain_x1_0',
-                        model_path=weight_path,#'/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/mars-msmt.pth.tar-60'
-                        verbose=False,
-                        num_classes=num_cls, # refer to dictionary in pth file
-                        pixel_norm=True,
-                        pixel_mean=pixel_mean,
-                        pixel_std=pixel_std,   
-                        device='cuda:0' #'cuda:0'
-                    ))
+        multiprocessing.set_start_method("spawn") # To use CUDA with multiprocessing, you must use the 'spawn' start method
+        with multiprocessing.Pool(processes=len(rtsp_sources)) as pool:
+            extractors = pool.starmap(gen_extractor, [(src, is_calibrate, weight_path, num_cls) for src in rtsp_sources])
 
     # 2.2. YOLO
     yolo = torch.load(f'weights/yolo/v8_{yolo_series}.pt', map_location='cuda')['model'].float()
