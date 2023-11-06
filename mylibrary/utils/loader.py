@@ -20,7 +20,7 @@ class Running:
 class LoadStreams:
     """references: YOLOv8 streamloader, i.e. `yolo predict source='rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`."""
 
-    def __init__(self, sources='file.streams', vid_stride=1, buffersz=30, iswait=True):
+    def __init__(self, sources='file.streams', vid_stride=1, buffersz=30, iswait=True, is_stack=True):
         """Initialize instance variables and check for consistent input stream shapes."""
         torch.backends.cudnn.benchmark = True  # faster for fixed-size inference
         self.running = Running()  # running flag for Thread
@@ -32,6 +32,7 @@ class LoadStreams:
         self.imgs, self.fps, self.frames, self.threads, self.shape = [None] * n, [0] * n, [0] * n, [None] * n, [[]] * n
         self.caps = [None] * n  # video capture objects
         self.queues = [MyQueue(maxsize=buffersz) for _ in range(n)]
+        self.stack = is_stack
         for i, s in enumerate(sources):  # index, source
             # Start thread to read frames from video stream
             st = f'{i + 1}/{n}: {s}... '
@@ -81,7 +82,8 @@ class LoadStreams:
                 else:
                     _, _ = cap.retrieve()
             else:
-                _, _ = cap.retrieve()
+                if self.stack:
+                    _, _ = cap.retrieve()
                 time.sleep(0.01)  # wait until the buffer is empty
 
     def close(self):

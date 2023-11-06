@@ -13,14 +13,9 @@ from mylibrary.nets import FeatureExtractor, get_classsz
 def run():
     LOGGER.info(f"\nINIT::::💡 current number of running threads: {active_count()}\n")
 
-"""0. system params"""
-is_save = True
-is_record = True
-min_dist_thres = 0.08
-max_dist_thres = 0.14
-buf_dir = f'images/gallery_{min_dist_thres}_{max_dist_thres}'
+    """0. system params"""
 
-    yolo_series = 'l'
+    yolo_series = 'x'
     track_conf=0.01
     track_iou=0.7
     
@@ -72,12 +67,10 @@ buf_dir = f'images/gallery_{min_dist_thres}_{max_dist_thres}'
                         device='cuda:0' #'cuda:0'
                     ))
 
-reid_mans = []
-for i,extr in enumerate(extractors):
-    reid_mans.append(ReIDManager(model=extr, buf_dir=buf_dir))
-    reid_mans[i].min_dist_thres = min_dist_thres 
-    reid_mans[i].max_dist_thres = max_dist_thres 
-LOGGER.info("")
+    # 2.2. YOLO
+    yolo = torch.load(f'weights/yolo/v8_{yolo_series}.pt', map_location='cuda')['model'].float()
+    yolo.eval()
+    yolo.half()
 
     """3. Reid manager(ReID)"""
     if is_reid:
@@ -102,8 +95,8 @@ LOGGER.info("")
         sources=rtsp_sources, 
         vid_stride=1, 
         buffersz=queue_capacity, 
-        iswait=True
-        # is_stack=True
+        iswait=True, 
+        is_stack=True
         )
     num_src = len(rtsp_sources)
     fps = streams.fps[0]
@@ -165,7 +158,7 @@ LOGGER.info("")
         if active_count() == 1:
             break
 
-    LOGGER.info(f"\nDONE! 👋\n\n\n")
+    LOGGER.info(f"\nDONE! 👋\n\n")
 
 if __name__=='__main__':
     run()
