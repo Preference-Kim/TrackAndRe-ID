@@ -1,3 +1,3 @@
-from .reid import FeatureExtractor
+from .reid import FeatureExtractor, get_classsz
 
-__all__ = 'FeatureExtractor'
+__all__ = 'FeatureExtractor', 'get_classsz'

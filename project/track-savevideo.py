@@ -21,7 +21,7 @@ import torch
 
 from mylibrary.utils.loader import LoadStreams  # Import the LoadStreams class from the specified module
 from mylibrary.utils import LOGGER
-from mylibrary.utils.track_reid import TrackCamThread
+from utils.track import TrackCamThread
 
 model = torch.load('weights/yolo/v8_l.pt', map_location='cuda')['model'].float()
 model.eval()

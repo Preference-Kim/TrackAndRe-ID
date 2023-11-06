@@ -3,7 +3,7 @@ import torch
 """remap the id of device for .pth file"""
 
 # Model weight file path
-model_path = '/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1031.pth.tar-360'
+model_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1106.imgtri.pth.tar-800'
 
 # Set the device for model loading
 device = torch.device('cuda:0')
@@ -19,7 +19,7 @@ model = torch.load(model_path, map_location=device)
 
 # Save the model to disk (including its state dictionary)
 # Set a new file path
-new_model_path = '/home/sunhokim/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1031_cuda0.pth'
+new_model_path = '/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1106.imgtri.cuda0.pth'
 
 # Save the entire model
 torch.save(model, new_model_path)

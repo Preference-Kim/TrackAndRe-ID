@@ -6,10 +6,19 @@ import torchvision.transforms as T
 from PIL import Image
 
 from torchreid.utils import (
-    check_isfile, load_pretrained_weights, compute_model_complexity
+    check_isfile, load_pretrained_weights, compute_model_complexity, load_checkpoint
 )
 from torchreid.models import build_model
 
+def get_classsz(fpath="/home/sunho/Documents/mygit/TrackAndRe-ID/weights/reid/myweights/model1103.vidsoft_cuda0.pth"):
+    checkpoint = load_checkpoint(fpath)
+
+    if 'state_dict' in checkpoint:
+        state_dict = checkpoint['state_dict']
+    else:
+        state_dict = checkpoint
+    
+    return state_dict['classifier.bias'].size()[0]
 
 class FeatureExtractor(object):
     """A simple API for feature extraction.

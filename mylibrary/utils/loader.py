@@ -71,13 +71,15 @@ class LoadStreams:
             if not self.queues[i].full():
                 n += 1
                 cap.grab()  # .read() = .grab() followed by .retrieve()
-                if self.queues[i].running and n % self.vid_stride == 0:
+                if self.queues[i].ready and n % self.vid_stride == 0:
                     success, im = cap.retrieve()
                     if not success:
                         im = np.zeros(self.shape[i], dtype=np.uint8)
                         LOGGER.warning('WARNING ⚠️ Video stream unresponsive, please check your IP camera connection.')
                         cap.open(stream)  # re-open stream if signal was lost
                     self.queues[i].put(im)
+                else:
+                    _, _ = cap.retrieve()
             else:
                 _, _ = cap.retrieve()
                 time.sleep(0.01)  # wait until the buffer is empty
