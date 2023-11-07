@@ -1,102 +1,12 @@
-import re
 import os
-from os.path import isfile, join
 
 import cv2
 import torch
+
+from .loader_util import list_images_in_directory, split_list_into_batches
 from torchreid import metrics
-
-class Batch:
-    """Simple data class that contains image lists for each id."""
-    def __init__(self, id, cam):
-        self.id = id
-        self.cam = cam
-        self.batch = []
-        self.feature = None
-        
-    def __call__(self):
-        return self.batch
-
-def list_images_in_directory(directory_path):
-    """
-    List all image files in the specified directory.
-
-    :param directory_path: The path to the directory containing images.
-    :return: A list of image file paths.
-    """
-    image_files = [join(directory_path, f) for f in os.listdir(directory_path) if isfile(join(directory_path, f))]
-
-    # Filter the image files based on common image file extensions (you can customize this list).
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']
-    image_files = [f for f in image_files if any(f.lower().endswith(ext) for ext in image_extensions)]
-
-    return image_files
-
-def split_list_into_batches(image_list):
-    """
-    Split a list of image files into batches based on 'id{index}_' part of the file names.
-    
-    :param image_list: A list of image file paths.
-    :return: A dictionary where keys are 'index' values, and values are lists of file paths with the same 'id{index}_'.
-    """
-    batches = {}  # Dictionary to store batches
-    for image_path in image_list:
-        # Use regular expression to extract 'index' from the file name
-        idx_match = re.search(r'id(\d+)_', image_path)
-        cam_match = re.search(r'cam(\d+)', image_path)
-        if idx_match:
-            index = int(idx_match.group(1))  # Extract the 'index'
-            if index in batches:
-                batches[index]().append(image_path)
-            else:
-                batches[index] = Batch(id = index, cam = cam_match.group(1))
-                batches[index]().append(image_path)
-    
-    return batches
-
-class ReidMap:
-    _count = 0
-    id_map = {}  # Class-level dictionary to store id-reid mappings
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def map_reid(cls, id, id_dst):
-        """
-        Map reid from id to id_dst.
-
-        Args:
-            id (int): Source id.
-            id_dst (int): Destination id.
-        """
-        if id_dst in cls.id_map:
-            reid = cls.id_map[id_dst]
-        else:
-            cls._count += 1
-            reid = cls._count
-            cls.id_map[id_dst] = reid
-
-        cls.id_map[id] = reid
-
-    @classmethod
-    def get_reid(cls, id):
-        """
-        Get the reid for a given id.
-
-        Args:
-            id (int): The id to retrieve reid for.
-
-        Returns:
-            int: The reid for the given id.
-        """
-        if id in cls.id_map:
-            return cls.id_map[id]
-        else:
-            return -1  # Dummy id    
-
 class Features:
-    fs = {-1: torch.zeros(1, 512).cuda()}
+    fs = {-1: torch.zeros(1, 512).cuda()} # ids(int): featurematrix(torch.Tensor)
     
     @classmethod
     def __call__(cls):
@@ -120,35 +30,46 @@ class ReIDManager:
         # TODO State
 
     def load_gallery(self):
+        """
+        TODO: need to revise
+        """
         image_list = list_images_in_directory(self.buf_dir)
         batches = split_list_into_batches(image_list)
 
         for idx, batch in batches.items():
             Features.fs[idx]=self.extractor(batch())
 
-    def update(self, im, id, cam, count, issave = False):
-        """update distinctive feature"""
-        im_feat = self.extractor([im])
-        reid = ReidMap.get_reid(id)
-        if reid ==-1:
-            fs = Features.fs.copy()
-            if id in fs:
-                distmat = metrics.compute_distance_matrix(im_feat, Features.fs[id], metric='cosine')
-                if not (distmat<self.min_dist_thres).any():
-                    Features.fs[id]=torch.cat((Features.fs[id], im_feat),dim=0)
-                    cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+    def update_reid(self, cam, count, im, id, reid, issave = False):
+        im_ft = self.extractor([im])
+        is_wrong = True # initialization
+        for r in IDManager.reid2id[reid].copy():
+            fts = Features()[r].clone().detach()
+            dist_mat = metrics.compute_distance_matrix(im_ft, fts, metric='cosine')
+            if (dist_mat<self.min_dist_thres).any():
+                return
             else:
-                Features.fs[id] = im_feat
-                cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+                is_wrong &= (dist_mat>self.max_dist_thres).all()
+        if is_wrong: # wrong reid, need to correct
+            IDManager.reset_reid(id, reid)
+            Features.fs[id] = im_ft           
+        else: # good feature, need to add
+            Features.fs[id] = torch.cat((Features.fs[id], im_ft),dim=0)
+        cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+
+    def update_id(self, cam, count, im, id, issave = False):
+        im_ft = self.extractor([im])
+        if id not in Features():
+            Features.fs[id] = im_ft
         else:
-            K = ReIDManager._cam.copy()
-            for i in K:
-                if i!=-1 and ReidMap.id_map.get(i,-1)==reid:
-                    distmat = metrics.compute_distance_matrix(im_feat, Features.fs[id], metric='cosine')
-                    if (distmat<self.min_dist_thres).any():
-                        return
-            Features.fs[id] = torch.cat((Features.fs[id], im_feat),dim=0)
-            cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
+            fts = Features()[id].clone().detach()
+            dist_mat = metrics.compute_distance_matrix(im_ft, fts, metric='cosine')
+            if (dist_mat>self.max_dist_thres).all(): # supposed that id is switched, need to correct
+                Features.fs[id] = im_ft
+            elif (dist_mat>self.min_dist_thres).all():
+                Features.fs[id] = torch.cat((Features.fs[id], im_ft),dim=0)
+            else:
+                return
+        cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
     
     def sync_id(self, id, cam):
         """
@@ -221,3 +142,142 @@ class ReIDManager:
         """
         pass
     
+class IDManager:
+    """Track ID"""
+    active_c2i = {}     # active_c2i[cam] = {id, ...} (set)
+    newest_id = {}      # newest_id[cam] = id (int)
+    i2c = {}            # i2c[id] = cam
+    gallery = {}        # gallery[cam] = [[id, count], ...], all ids have reid
+    gallery_life = 60
+    """Re ID"""
+    _count = 0
+    active_reids = {}   # active_reids[cam] = {reid, ...} (set)
+    id2reid = {}        # id2reid[id] = reid
+    reid2id = {}        # reid2id[reid] = set([id, ...])
+    
+    def __init__(self):
+        pass
+    
+    @staticmethod
+    def update_actives(cam, indices):
+        """update active ids for id-synchronization
+
+        Args:
+            cam (int): index of input channel
+            indices (list of int): list of current ids in cam
+        """
+        if cam not in IDManager.newest_id:
+            IDManager.newest_id[cam] = 0
+        IDManager.active_c2i[cam] = set(indices)
+        IDManager.active_reids[cam].clear()
+        for id in indices:
+            if id > IDManager.newest_id[cam]:
+                IDManager.i2c[id] = cam              
+                IDManager.newest_id[cam] = id
+            reid = IDManager.get_reid(id)
+            if reid:
+                IDManager.active_reids[cam].add(reid)
+    
+    @staticmethod
+    def add_new_asset(cam, id):
+        """newly add an id to list of gallery
+
+        Args:
+            cam (int): index of input channel
+            id (int): track id
+        """
+        if IDManager.get_reid(id): # if it's unidentified ID, it will be thrown away
+            if IDManager.gallery[cam]:
+                IDManager.gallery[cam].append([id, 0])
+            else:
+                IDManager.gallery[cam] = [[id, 0]]
+        else:
+            del(Features.fs[id])
+
+    @staticmethod
+    def checkup_assets(cam, fps):
+        """check if there exists any out-of-date id in gallery
+
+        Args:
+            cam (int): index of input channel
+            fps (float): fps of input channel
+        """
+        if not IDManager.gallery[cam]:
+            return
+        else:
+            for i, asset in enumerate(IDManager.gallery[cam]):
+                asset[-1] += 1
+                if asset[-1] > IDManager.gallery_life*fps:
+                    IDManager.reset_reid(asset[0], None)
+                    del(IDManager.gallery[cam][i])
+                    del(Features.fs[asset[0]])
+    
+    @staticmethod
+    def get_reid(id):
+        """return reid of id
+
+        Args:
+            id (int): track id
+
+        Returns:
+            if id is mapped:
+                reid (int)
+            else:
+                None
+        """
+        if id in IDManager.id2reid:
+            return IDManager.id2reid[id]
+        else:
+            return None
+    
+    @staticmethod
+    def reset_reid(id, reid):
+        del(IDManager.id2reid[id])
+        if reid:
+            IDManager.reid2id[reid].discard(id)
+        else:
+            r = IDManager.get_reid(id)
+            IDManager.reid2id[r].discard(id)
+        
+        
+
+class ReidMap:
+    _count = 0
+    id_map = {}  # Class-level dictionary to store id-reid mappings
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def map_reid(cls, id, id_dst):
+        """
+        Map reid from id to id_dst.
+
+        Args:
+            id (int): Source track id.
+            id_dst (int): Destination id.
+        """
+        if id_dst in cls.id_map:
+            reid = cls.id_map[id_dst]
+        else:
+            cls._count += 1
+            reid = cls._count
+            cls.id_map[id_dst] = reid
+
+        cls.id_map[id] = reid
+
+    @classmethod
+    def get_reid(cls, id):
+        """
+        Get the reid for a given id.
+
+        Args:
+            id (int): The id to retrieve reid for.
+
+        Returns:
+            int: The reid for the given id.
+        """
+        if id in cls.id_map:
+            return cls.id_map[id]
+        else:
+            return -1  # Dummy id    

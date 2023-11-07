@@ -1,4 +1,5 @@
-import os
+import os, re
+from os.path import isfile, join
 from pathlib import Path
 
 import cv2
@@ -63,3 +64,51 @@ def get_pixel_params_mask(sources, vid_stride=3, count=1, threshold=(210, 210, 2
     LOGGER.info(f"📷 Pixel Standard Deviation (Excluding Bright Areas):  {overall_std}")
 
     return (overall_mean, overall_std)
+
+class Batch:
+    """Simple data class that contains image lists for each id."""
+    def __init__(self, id, cam):
+        self.id = id
+        self.cam = cam
+        self.batch = []
+        self.feature = None
+        
+    def __call__(self):
+        return self.batch
+
+def list_images_in_directory(directory_path):
+    """
+    List all image files in the specified directory.
+
+    :param directory_path: The path to the directory containing images.
+    :return: A list of image file paths.
+    """
+    image_files = [join(directory_path, f) for f in os.listdir(directory_path) if isfile(join(directory_path, f))]
+
+    # Filter the image files based on common image file extensions (you can customize this list).
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']
+    image_files = [f for f in image_files if any(f.lower().endswith(ext) for ext in image_extensions)]
+
+    return image_files
+
+def split_list_into_batches(image_list):
+    """
+    Split a list of image files into batches based on 'id{index}_' part of the file names.
+    
+    :param image_list: A list of image file paths.
+    :return: A dictionary where keys are 'index' values, and values are lists of file paths with the same 'id{index}_'.
+    """
+    batches = {}  # Dictionary to store batches
+    for image_path in image_list:
+        # Use regular expression to extract 'index' from the file name
+        idx_match = re.search(r'id(\d+)_', image_path)
+        cam_match = re.search(r'cam(\d+)', image_path)
+        if idx_match:
+            index = int(idx_match.group(1))  # Extract the 'index'
+            if index in batches:
+                batches[index]().append(image_path)
+            else:
+                batches[index] = Batch(id = index, cam = cam_match.group(1))
+                batches[index]().append(image_path)
+    
+    return batches

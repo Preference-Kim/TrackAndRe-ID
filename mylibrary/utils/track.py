@@ -6,48 +6,40 @@ import numpy as np
 import torch
 
 from . import bt_util, MyQueue, LOGGER
-from .feature_manager import ReidMap, Features
+from .feature_manager import ReIDManager, ReidMap, IDManager, Features
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
-    def __init__(self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, reid_stride=8, queue_capacity=0):
+    def __init__(
+        self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, reid_stride=8, queue_capacity=0, life=5):
         """
         Args:
-            model (_type_): _description_
-            streams (_type_): _description_
-            camid (_type_): _description_
-            sz (_type_): _description_
-            output_queue (_type_): _description_
-            conf (float, optional): _description_. Defaults to 0.001.
-            iou (float, optional): _description_. Defaults to 0.1.
-                        model=yolo, 
-            streams=streams, 
-            camid=i, 
-            sz=640, 
-            output_queue=output_queues[i], 
-            conf=track_conf, iou=track_iou, # original case: conf_threshold=0.25, iou_threshold=0.45
-            isreid=is_reid,
-            reid_stride=reid_stride,
-            queue_capacity=queue_capacity # infinite
+
         """
         super(TrackCamThread, self).__init__()
         self.model = model
         self.cam = camid
-        self.fps = streams.fps[camid]
-        self.sz = sz
-        self.running = streams.running
         self.input_queue = streams.queues[camid]
-        self.output_queue = output_queue
+        self.running = streams.running
+        self.fps = streams.fps[camid]
+        """for tracking"""
+        self.bt = bt.BYTETracker(self.fps)
+        self.sz = sz
         self.conf = conf
         self.iou = iou
-        self.bt = bt.BYTETracker(self.fps)
         self.count = -1
-        ###
+        """for reid"""
         self.reid_queue = MyQueue(maxsize=queue_capacity)
         self.frame_ant = None
         self.reid_stride = reid_stride
         self.isreid = isreid
         self.daemon = True
+        """for id managing"""
+        self.activeids = []
+        self.deactiveids = {}      # id: [count, cam]
+        self.life = life
+        """output"""
+        self.output_queue = output_queue
     
     def run(self):
         while self.running():
@@ -72,9 +64,11 @@ class TrackCamThread(Thread):
                         draw_line_sync(self.frame_ant, x1, y1, x2, y2, ReidMap.id_map[index])
                     else:
                         draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
-                if self.isreid and self.reid_queue.ready and self.count%self.reid_stride == 0 :
-                    msg = (frame, self.count, xys, indices)
-                    self.reid_queue.put(msg)
+                if self.isreid:
+                    self.update_ids(indices)
+                    if self.reid_queue.ready and self.count%self.reid_stride == 0 :
+                        msg = (frame, self.count//self.reid_stride, xys, indices)
+                        self.reid_queue.put(msg)
             self.output_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
         LOGGER.info(f"👋 Track Thread   for cam {self.cam} is closed")
 
@@ -124,7 +118,31 @@ class TrackCamThread(Thread):
                                 np.array(confidences),
                                 np.array(object_classes))
         return outputs
-        
+
+    def update_ids(self, indices):
+        if not self.activeids:
+            self.activeids = indices
+        else:
+            for did in self.deactiveids: # revive
+                if did in indices:
+                    del(self.deactiveids[did])
+            for id in self.activeids: # config deactive
+                if id in indices:
+                    continue
+                else:
+                    self.deactiveids[id] = [0, self.cam]
+        IDManager.update_actives(indices, self.cam)
+        self.checkup_ids()
+    
+    def checkup_ids(self):
+        for did, status in self.deactiveids.items():
+            status += 1
+            if status > self.life*self.fps:
+                IDManager.add_new_asset(self.cam, did)
+                del(self.deactiveids[did])
+        IDManager.checkup_assets(self.cam, self.fps)
+            
+
 def draw_line_unsync(image, x1, y1, x2, y2, index):
     w = 10
     h = 10
