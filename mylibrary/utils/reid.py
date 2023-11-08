@@ -46,11 +46,15 @@ class ReIDThread(Thread):
                     cropped = frame[y1:y2, x1:x2]
                     if reid:
                         self.manager.update_reid(cam = self.cam, count = count, im = cropped, id = index, reid = reid, issave = self.issave)
+                        self.manager.sync(id = index) # reid 겹치면 어캄?
                     else:
                         self.manager.update_id(cam = self.cam, count = count, im = cropped, id = index, issave = self.issave)
+                        self.manager.sync(id = index)
+                        """안한지 오래 됐으면 그냥 reid 하나 주기"""
                         """TODO
-                            1. sync: 다른 카메라의 active중 가장 가까운 id를 찾는다. (synced_id)
-                                적당한게 있으면 sync에 추가한다: 
+                            1. sync: 다른 카메라의 active중 가장 가까운 id를 찾는다. (synced_id, score)
+                                min_threashold 이하일 때:
+                                    같은 캠 내 다른 id가 연결되어있을 때: score 비교해서 상대가 높으면 다른 애(같은 reid 제외)를 찾고, 내가 높으면 걔는 해제하고 내가 들어간다.
                             1-1. synced_id가 reid를 가지면 이를 반환하고고
                             2. 각 id는 sync와 상관 없이 갤러리에서 reid를 시도한다
                             3. 일정 시간 안에 reid를 성공하면 sync 포함 모두 reid를 할당하고, 시간이 지나면 새로운 id를 sync에게 갱신한다.

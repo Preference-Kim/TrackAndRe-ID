@@ -6,12 +6,23 @@ import numpy as np
 import torch
 
 from . import bt_util, MyQueue, LOGGER
-from .feature_manager import ReIDManager, ReidMap, IDManager, Features
+from .feature_manager import ReIDentify, ReidMap, IDManager, Features
 from ..nets import nn as bt
 
 class TrackCamThread(Thread):
+
+    num_cam = 0
+    stepsz = 1
+    step = 1
+    which_cam = -15 # reid 진행할 camid 지칭, 0 되기 전까지는 track만 진행함
+
+    @staticmethod
+    def settings(num_cam = 0, reid_stepsz = 1):
+        TrackCamThread.num_cam = num_cam
+        TrackCamThread.stepsz = reid_stepsz
+
     def __init__(
-        self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, reid_stride=8, queue_capacity=0, life=5):
+        self, model, streams, camid, sz, output_queue, conf=0.001, iou=0.1, isreid=True, queue_capacity=0, life=5):
         """
         Args:
 
@@ -31,7 +42,6 @@ class TrackCamThread(Thread):
         """for reid"""
         self.reid_queue = MyQueue(maxsize=queue_capacity)
         self.frame_ant = None
-        self.reid_stride = reid_stride
         self.isreid = isreid
         self.daemon = True
         """for id managing"""
@@ -40,10 +50,27 @@ class TrackCamThread(Thread):
         self.life = life
         """output"""
         self.output_queue = output_queue
+
+    @staticmethod
+    def ismyturn(camid):
+        who = TrackCamThread.which_cam
+        if TrackCamThread.step == TrackCamThread.stepsz:
+            TrackCamThread.step = 1
+            if who in range(TrackCamThread.num_cam):
+                TrackCamThread.which_cam = (who + 1) % TrackCamThread.num_cam
+                return camid==who
+            elif who < 0:
+                TrackCamThread.which_cam += 1
+            else:
+                TrackCamThread.which_cam = -1
+        elif TrackCamThread.step < TrackCamThread.stepsz:
+            TrackCamThread.step += 1
+        else:
+            TrackCamThread.step = 1
+        return False
     
     def run(self):
         while self.running():
-            self.count += 1
             frame = self.input_queue.get()
             outputs = self.track(frame)
             self.frame_ant = frame.copy()
@@ -65,9 +92,10 @@ class TrackCamThread(Thread):
                     else:
                         draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
                 if self.isreid:
-                    self.update_ids(indices)
-                    if self.reid_queue.ready and self.count%self.reid_stride == 0 :
-                        msg = (frame, self.count//self.reid_stride, xys, indices)
+                    self.update_active_ids(indices) #TODO: IDManager.synced_ids의 key(followee)가 active에 없으면 지워버리기. 그리고 reid는 매번 reidmap을 통해서 갱신하기(reid core, sync 분리)
+                    if TrackCamThread.ismyturn(self.cam) and self.reid_queue.ready:
+                        self.count += 1
+                        msg = (frame, self.count, xys, indices)
                         self.reid_queue.put(msg)
             self.output_queue.put(self.frame_ant) # Send the frame to the main thread for displaying
         LOGGER.info(f"👋 Track Thread   for cam {self.cam} is closed")
@@ -119,18 +147,19 @@ class TrackCamThread(Thread):
                                 np.array(object_classes))
         return outputs
 
-    def update_ids(self, indices):
+    def update_active_ids(self, indices):
         if not self.activeids:
             self.activeids = indices
         else:
             for did in self.deactiveids: # revive
                 if did in indices:
                     del(self.deactiveids[did])
-            for id in self.activeids: # config deactive
+            for id in self.activeids: # config deactivated ids
                 if id in indices:
                     continue
                 else:
-                    self.deactiveids[id] = [0, self.cam]
+                    self.deactiveids[id] = [0, self.cam] # deactive
+                    _ = IDManager.synced_ids_REMOVED.pop(id, None)
         IDManager.update_actives(indices, self.cam)
         self.checkup_ids()
     

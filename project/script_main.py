@@ -6,7 +6,7 @@ import queue
 import torch
 
 """import my library"""
-from mylibrary import ReIDManager, LoadStreams, TrackCamThread, ReIDThread, MakeVideo
+from mylibrary import ReIDentify, IDManager, LoadStreams, TrackCamThread, ReIDThread, MakeVideo
 from mylibrary.process import gen_extractor
 from mylibrary.utils import LOGGER
 from mylibrary.nets import get_classsz
@@ -21,8 +21,8 @@ def run():
     track_iou=0.7
     
     is_reid = True
-    reid_stride = 8  #8
-    stepsize = 4
+    reid_stride_inter = 2  #8
+    reid_stride_intra = 5
     queue_capacity = 0 #0:infinite
     
     is_calibrate = True
@@ -43,6 +43,7 @@ def run():
         'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/401',
         'rtsp://admin:1234567s@10.160.30.13:554/Streaming/Channels/501',
     ]
+    num_src = len(rtsp_sources)
 
     """2. MODEL"""
 
@@ -56,7 +57,7 @@ def run():
         num_cls=get_classsz(fpath=weight_path)
         
         multiprocessing.set_start_method("spawn") # To use CUDA with multiprocessing, you must use the 'spawn' start method
-        with multiprocessing.Pool(processes=len(rtsp_sources)) as pool:
+        with multiprocessing.Pool(processes=num_src) as pool:
             extractors = pool.starmap(gen_extractor, [(src, is_calibrate, weight_path, num_cls) for src in rtsp_sources])
 
     # 2.2. YOLO
@@ -66,11 +67,11 @@ def run():
 
     """3. Reid manager(ReID)"""
     if is_reid:
+        IDManager.settings(num_cam=num_src)
+        ReIDentify.set_thretholds(mind=min_dist_thres, maxd=max_dist_thres)
         reid_mans = []
         for i,extr in enumerate(extractors):
-            reid_mans.append(ReIDManager(model=extr, buf_dir=buf_dir))
-            reid_mans[i].min_dist_thres = min_dist_thres 
-            reid_mans[i].max_dist_thres = max_dist_thres 
+            reid_mans.append(ReIDentify(model=extr, buf_dir=buf_dir))
         LOGGER.info("")
         num_set=3
     else:
@@ -90,7 +91,6 @@ def run():
         iswait=True, 
         is_stack=True
         )
-    num_src = len(rtsp_sources)
     fps = streams.fps[0]
     resolution = streams.shape[0]
 
@@ -101,16 +101,16 @@ def run():
 
     # Create threads for each video source
     threads = []
-    for i in range(len(streams.sources)):
+    TrackCamThread.settings(num_cam=num_src, reid_stepsz=reid_stride_inter)
+    for i in range(num_src):
         t_track = TrackCamThread(
             model=yolo, 
-            streams=streams, 
+            streams=streams,
             camid=i, 
             sz=640, 
             output_queue=output_queues[i], 
             conf=track_conf, iou=track_iou, # original case: conf_threshold=0.25, iou_threshold=0.45
             isreid=is_reid,
-            reid_stride=reid_stride,
             queue_capacity=queue_capacity # infinite
             )
         
@@ -120,7 +120,7 @@ def run():
                 streams=streams,
                 feature_man = reid_mans[i],
                 queue = t_track.reid_queue,
-                stepsize = stepsize,
+                stepsize = reid_stride_intra,
                 issave = is_save            # whether save images used for features
             )
         

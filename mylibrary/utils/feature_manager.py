@@ -12,22 +12,27 @@ class Features:
     def __call__(cls):
         return cls.fs
 
-class ReIDManager:
+class ReIDentify:
     """
     Manage gallery features, matching id, and gallery size.
     """
     
     _active_ids = {-1:(-1,)} # list of Active IDs per camera {cam(int):ids(tuple of int)}
     _cam = {-1:-1} # id(int): cam(int)
+    min_dist = 0.1
+    max_dist = 0.25
 
     def __init__(self, model, buf_dir):
         self.buf_dir = buf_dir
         os.makedirs(self.buf_dir, exist_ok=True)
         #self.features = Features()
         self.extractor = model
-        self.min_dist_thres = 0.1
-        self.max_dist_thres = 0.25
         # TODO State
+
+    @staticmethod
+    def set_thretholds(mind=0.1, maxd=0.25):
+        ReIDentify.min_dist = mind
+        ReIDentify.max_dist = maxd
 
     def load_gallery(self):
         """
@@ -45,10 +50,10 @@ class ReIDManager:
         for r in IDManager.reid2id[reid].copy():
             fts = Features()[r].clone().detach()
             dist_mat = metrics.compute_distance_matrix(im_ft, fts, metric='cosine')
-            if (dist_mat<self.min_dist_thres).any():
+            if (dist_mat<ReIDentify.min_dist).any():
                 return
             else:
-                is_wrong &= (dist_mat>self.max_dist_thres).all()
+                is_wrong &= (dist_mat>ReIDentify.max_dist).all()
         if is_wrong: # wrong reid, need to correct
             IDManager.reset_reid(id, reid)
             Features.fs[id] = im_ft           
@@ -63,40 +68,50 @@ class ReIDManager:
         else:
             fts = Features()[id].clone().detach()
             dist_mat = metrics.compute_distance_matrix(im_ft, fts, metric='cosine')
-            if (dist_mat>self.max_dist_thres).all(): # supposed that id is switched, need to correct
+            if (dist_mat>ReIDentify.max_dist).all(): # supposed that id is switched, need to correct
                 Features.fs[id] = im_ft
-            elif (dist_mat>self.min_dist_thres).all():
+            elif (dist_mat>ReIDentify.min_dist).all():
                 Features.fs[id] = torch.cat((Features.fs[id], im_ft),dim=0)
             else:
                 return
         cv2.imwrite(f'{self.buf_dir}/id{id}_cam{cam}_{count}.jpg', im) if issave else None
-    
-    def sync_id(self, id, cam):
-        """
-            TODO: re-id inter camera
-            ids: list of active ids
-            output: reid map dictionary
-        """
 
-        min_distance = 1
-
-        gis = ReIDManager._active_ids.copy()
-        for c, ids in gis.items(): #in features.keys() and active
-            if cam == c:
-                continue
-            for i in ids:
-                if i in Features.fs:
-                    dismat = metrics.compute_distance_matrix(Features.fs[id], Features.fs[i], metric='cosine')
-                    min_dismat = torch.min(dismat).item() 
-                    # minimax_dismat = torch.max(dismat).item()
-
-                    if min_dismat < min_distance:
-                        min_distance = min_dismat
-                        # minimax_distance = minimax_dismat
-                        min_i = i
-        
-        if min_distance < self.max_dist_thres:
-            ReidMap.map_reid(id, min_i)
+    @staticmethod
+    def sync(id):
+        if id in IDManager.synced_ids_REMOVED.values(): #################TODO:
+            return
+        cam = IDManager.i2c[id]
+        c2i = IDManager.active_c2i.copy()
+        blacklist = set()
+        while True:
+            min_d = 1
+            nearest_id = None
+            for c, ids in c2i.items():
+                if c == cam:
+                    continue
+                for i in ids - blacklist:
+                    if i in Features():
+                        dismat = metrics.compute_distance_matrix(Features.fs[id], Features.fs[i], metric='cosine')
+                        distance = torch.min(dismat).item()
+                        if distance > ReIDentify.max_dist:
+                            blacklist.add(i)
+                            continue
+                        elif distance < min_d:
+                            min_d = distance
+                            nearest_id = i
+            if nearest_id:
+                if nearest_id in IDManager.synced_ids_REMOVED:              # 이미 누가 따라가고 있다면?
+                    (challenger, record) = IDManager.synced_ids_REMOVED[nearest_id]
+                    if challenger not in IDManager.active_c2i[IDManager.i2c[challenger]]:
+                        IDManager.synced_ids_REMOVED[nearest_id] = (id, min_d) 
+                        break    
+                    elif min_d > record:
+                        blacklist.add(nearest_id)
+                    else:
+                        IDManager.synced_ids_REMOVED[nearest_id] = (id, min_d) 
+                        break # TODO: reid 처음에 id2reid, synced_ids로 재맵핑하기
+            else:
+                break
     
     def remap_id(self, id):
         """
@@ -110,9 +125,9 @@ class ReIDManager:
         min_distance = 1
 
         for i, f in fs.items():
-            if i == id or i in ReIDManager._active_ids[ReIDManager._cam[i]]:
+            if i == id or i in ReIDentify._active_ids[ReIDentify._cam[i]]:
                 continue
-            Acts = ReIDManager._active_ids[ReIDManager._cam[id]]
+            Acts = ReIDentify._active_ids[ReIDentify._cam[id]]
             if ReidMap.get_reid(i) in [ReidMap.get_reid(ii) for ii in Acts]:
                 continue
             dismat = metrics.compute_distance_matrix(Features.fs[id], f, metric='cosine')
@@ -143,20 +158,28 @@ class ReIDManager:
         pass
     
 class IDManager:
+    num_cam = None      # number of input sources
     """Track ID"""
     active_c2i = {}     # active_c2i[cam] = {id, ...} (set)
     newest_id = {}      # newest_id[cam] = id (int)
     i2c = {}            # i2c[id] = cam
     gallery = {}        # gallery[cam] = [[id, count], ...], all ids have reid
     gallery_life = 60
+    """Sync"""
+    synced_ids = []    # list of [reid, [id]*num_cam, [distance]*num_cam]
+    synced_ids_REMOVED = {}     # synced_ids[followee] = (follower(int), distance(float)) (tuple)
     """Re ID"""
-    _count = 0
+    _count_reid = 0
     active_reids = {}   # active_reids[cam] = {reid, ...} (set)
     id2reid = {}        # id2reid[id] = reid
     reid2id = {}        # reid2id[reid] = set([id, ...])
     
     def __init__(self):
         pass
+    
+    @staticmethod
+    def settings(num_cam):
+        IDManager.num_cam = num_cam
     
     @staticmethod
     def update_actives(cam, indices):
@@ -229,6 +252,25 @@ class IDManager:
             return IDManager.id2reid[id]
         else:
             return None
+
+    @staticmethod
+    def map_reid(id, id_dst):
+        """
+        Map reid from id to id_dst.
+
+        Args:
+            id (int): Source track id.
+            id_dst (int): Destination id.
+        """
+        if id_dst in IDManager.id2reid:
+            reid = IDManager.id2reid[id_dst]
+        else:
+            IDManager._count_reid += 1
+            reid = IDManager._count_reid
+            IDManager.id2reid[id_dst] = reid
+            IDManager.reid2id[reid] = {id_dst}
+        IDManager.id2reid[id] = reid
+        IDManager.reid2id[reid].add(id)
     
     @staticmethod
     def reset_reid(id, reid):
@@ -238,46 +280,3 @@ class IDManager:
         else:
             r = IDManager.get_reid(id)
             IDManager.reid2id[r].discard(id)
-        
-        
-
-class ReidMap:
-    _count = 0
-    id_map = {}  # Class-level dictionary to store id-reid mappings
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def map_reid(cls, id, id_dst):
-        """
-        Map reid from id to id_dst.
-
-        Args:
-            id (int): Source track id.
-            id_dst (int): Destination id.
-        """
-        if id_dst in cls.id_map:
-            reid = cls.id_map[id_dst]
-        else:
-            cls._count += 1
-            reid = cls._count
-            cls.id_map[id_dst] = reid
-
-        cls.id_map[id] = reid
-
-    @classmethod
-    def get_reid(cls, id):
-        """
-        Get the reid for a given id.
-
-        Args:
-            id (int): The id to retrieve reid for.
-
-        Returns:
-            int: The reid for the given id.
-        """
-        if id in cls.id_map:
-            return cls.id_map[id]
-        else:
-            return -1  # Dummy id    
