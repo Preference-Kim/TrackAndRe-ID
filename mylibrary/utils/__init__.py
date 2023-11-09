@@ -45,17 +45,33 @@ os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # for deterministic training
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress verbose TF compiler warnings in Colab
 
 class MyQueue(queue.Queue):
-    def __init__(self, maxsize=0):
+    def __init__(self, task=set(), maxsize=0):
         super().__init__(maxsize)
-        self.ready = True  # Flag to track whether get() method has been called
+        self.ready = True   # Flag to track whether get() method has been called
+        self.task = task    # set of strings to define tasks
+
+    def put(self, item, block=True, timeout=None):
+        self.ready = False
+        super().put(item, block, timeout)
 
     def get(self, block=True, timeout=None):
         self.ready = True  # Track that the get() method has been called
         return super().get(block, timeout)
+
+    def put_query(self, task=None, items=None, **kwargs):
+        if not task:
+            LOGGER.warning('WARNING ⚠️ Attempted to put query with no task name. This command will be ignored.')
+        else:
+            element = (task, items)
+            super().put(element, **kwargs)
     
-    def put(self, item, block=True, timeout=None):
-        self.ready = False
-        super().put(item, block, timeout)
+    def get_query(self, **kwargs):
+        task, items = super().get(**kwargs)
+        if task not in self.task:
+            LOGGER.warning('WARNING ⚠️ Got a query with undefined task. Trying to get query again')
+            self.get_query(**kwargs)
+        else:
+            return (task, items)
 
 class SimpleClass:
     """

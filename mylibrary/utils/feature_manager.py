@@ -1,8 +1,10 @@
 import os
+from threading import Thread
 
 import cv2
 import torch
 
+from . import MyQueue
 from .loader_util import list_images_in_directory, split_list_into_batches
 from torchreid import metrics
 class Features:
@@ -156,9 +158,13 @@ class ReIDentify:
         Inactive features may need to be removed.
         """
         pass
-    
+
 class IDManager:
     num_cam = None      # number of input sources
+    task_q = MyQueue(maxsize=0,
+        task={'update'}
+        ) # queue for id(live track/reid/sync) update, sync, reid
+    
     """Track ID"""
     active_c2i = {}     # active_c2i[cam] = {id, ...} (set)
     newest_id = {}      # newest_id[cam] = id (int)
@@ -166,7 +172,7 @@ class IDManager:
     gallery = {}        # gallery[cam] = [[id, count], ...], all ids have reid
     gallery_life = 60
     """Sync"""
-    synced_ids = []    # list of [reid, [id]*num_cam, [distance]*num_cam]
+    synced_sets = []    # list of [reid, [id]*num_cam, [distance]*num_cam]
     synced_ids_REMOVED = {}     # synced_ids[followee] = (follower(int), distance(float)) (tuple)
     """Re ID"""
     _count_reid = 0
@@ -174,8 +180,22 @@ class IDManager:
     id2reid = {}        # id2reid[id] = reid
     reid2id = {}        # reid2id[reid] = set([id, ...])
     
+    @classmethod
+    @property
+    def task_map(cls):
+        return {
+            'update': cls.update_actives,
+        }
+    
     def __init__(self):
         pass
+    
+    @classmethod
+    def work(cls, running):
+        while running():
+            task, items = cls.task_q.get_query(timeout=2)
+            cls.task_map[task](items)
+            
     
     @staticmethod
     def settings(num_cam):
@@ -280,3 +300,21 @@ class IDManager:
         else:
             r = IDManager.get_reid(id)
             IDManager.reid2id[r].discard(id)
+    
+    """
+    
+    -- Synchronization Methods --
+    
+    """
+    
+    @staticmethod
+    def get_synced_set(id):
+        # synced_sets = []    # list of [reid, [id]*num_cam, [distance]*num_cam]
+        sets = IDManager.synced_sets
+        for idx_set, (reid, ids, distances) in enumerate(sets): # set[0] = reid(int), set[1], 
+            if id in ids:
+                return True, (idx_set, ids.index(id), reid, ids, distances)
+        return False, None
+
+    @staticmethod
+    def remove

@@ -27,7 +27,7 @@ class TrackCamThread(Thread):
         Args:
 
         """
-        super(TrackCamThread, self).__init__()
+        super().__init__(daemon = True)
         self.model = model
         self.cam = camid
         self.input_queue = streams.queues[camid]
@@ -43,12 +43,12 @@ class TrackCamThread(Thread):
         self.reid_queue = MyQueue(maxsize=queue_capacity)
         self.frame_ant = None
         self.isreid = isreid
-        self.daemon = True
         """for id managing"""
         self.activeids = []
         self.deactiveids = {}      # id: [count, cam]
         self.life = life
         """output"""
+        self.query = IDManager.task_q
         self.output_queue = output_queue
 
     @staticmethod
