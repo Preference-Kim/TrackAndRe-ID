@@ -72,7 +72,7 @@ class TrackCamThread(Thread):
     def run(self):
         while self.running():
             frame = self.input_queue.get()
-            outputs = self.track(frame)
+            outputs, removed_ids = self.track(frame)
             self.frame_ant = frame.copy()
             if len(outputs) > 0:
                 boxes = outputs[:, :4]
@@ -142,10 +142,11 @@ class TrackCamThread(Thread):
                 boxes.append([x1, y1, x2, y2])
                 confidences.append(detection[4])
                 object_classes.append(detection[5])
-        outputs = self.bt.update(np.array(boxes),
-                                np.array(confidences),
-                                np.array(object_classes))
-        return outputs
+        outputs, removed_ids = self.bt.update(boxes=np.array(boxes),
+                                scores=np.array(confidences),
+                                object_classes=np.array(object_classes),
+                                get_removed_tracks=True)
+        return (outputs, removed_ids)
 
     def update_active_ids(self, indices):
         if not self.activeids:
@@ -160,7 +161,7 @@ class TrackCamThread(Thread):
                 else:
                     self.deactiveids[id] = [0, self.cam] # deactive
                     _ = IDManager.synced_ids_REMOVED.pop(id, None)
-        IDManager.update_actives(indices, self.cam)
+        IDManager.id_update(indices, self.cam)
         self.checkup_ids()
     
     def checkup_ids(self):

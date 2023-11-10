@@ -397,7 +397,7 @@ class BYTETracker:
         self.kalman_filter = util.KalmanFilterXYAH()
         self.reset_id()
 
-    def update(self, boxes, scores, object_classes):
+    def update(self, boxes, scores, object_classes, get_removed_tracks=False):
         self.frame_id += 1
         activated_tracks = []
         re_find_tracks = []
@@ -504,7 +504,11 @@ class BYTETracker:
                                          track.score,
                                          track.cls,
                                          track.idx] for track in self.tracked_tracks if track.is_activated]
-        return numpy.asarray(output, dtype=numpy.float32)
+        if get_removed_tracks:
+            r_ts = [t.track_id for t in removed_tracks]
+            return (numpy.asarray(output, dtype=numpy.float32), set(r_ts))
+        else:
+            return numpy.asarray(output, dtype=numpy.float32)
 
     @staticmethod
     def init_track(boxes, scores, cls):
