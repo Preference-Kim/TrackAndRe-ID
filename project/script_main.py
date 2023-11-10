@@ -67,7 +67,7 @@ def run():
 
     """3. Reid manager(ReID)"""
     if is_reid:
-        IDManager.settings(num_cam=num_src)
+        id_man = IDManager(num_cam=num_src, gallery_life = 60)
         ReIDentify.set_thretholds(mind=min_dist_thres, maxd=max_dist_thres)
         reid_mans = []
         for i,extr in enumerate(extractors):
@@ -100,6 +100,9 @@ def run():
     """5. Threading"""
 
     # Create threads for each video source
+    
+    id_man.work(running = streams.running)
+    
     threads = []
     TrackCamThread.settings(num_cam=num_src, reid_stepsz=reid_stride_inter)
     for i in range(num_src):
