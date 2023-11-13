@@ -161,7 +161,7 @@ class ReIDentify:
 
 class IDManager: 
 
-    def __init__(self, num_cam = None, gallery_life = 60):
+    def __init__(self, num_cam = None, gallery_life = 60, unidentified_life = 5):
         
         """Queue for get tasks"""
         IDManager.task = set(IDManager.task_map().keys())
@@ -177,11 +177,12 @@ class IDManager:
         # vanished
         IDManager.missing_c2i = [([],[]) for _ in range(num_cam)]       # list - missing_c2i[cam] = ( [id (int), ...], [age (int), ...] ) (tuple) # BEFORE: {did (int): score (int)} 
         # gallery
-        IDManager.gallery = [([],[]) for _ in range(num_cam)]           # list - gallery[cam] = ( [id (int), ...], [age (int), ...] ) (tuple), all ids have reid
+        IDManager.gallery = [([],[],[]) for _ in range(num_cam)]        # list - gallery[cam] = ( [id (int), ...], [reid (int), ...], [age (int), ...] ) (tuple), all ids have reid
         IDManager.gallery_life = gallery_life
         """Sync"""
         IDManager.synced_sets = []                                      # list - synced_sets[idx] = ([reid], [id]*num_cam, [distance]*num_cam) (tuple)
         IDManager.synced_ids_REMOVED = {}                               # TODO: need to remove(asymmertic). synced_ids[followee] = (follower(int), distance(float)) (tuple)
+        IDManager.max_noreid = unidentified_life/num_cam                # int
         """Re ID"""
         IDManager._new_reid = 0                                         # int
         IDManager.id2reid = {}                                          # dict - id2reid[id] = reid (int)
@@ -196,13 +197,13 @@ class IDManager:
         # Track ID: vanished
         cls.missing_c2i = [([],[]) for _ in range(num_cam)] # ( [id (int), ...], [age (int), ...] ) (tuple) # BEFORE: {did (int): score (int)} (dict)
         # Track ID: gallery
-        cls.gallery = [([],[]) for _ in range(num_cam)]     # ( [id (int), ...], [age (int), ...] ) (tuple)
+        cls.gallery = [([],[],[]) for _ in range(num_cam)]     # ( [id (int), ...], [age (int), ...] ) (tuple)
 
     @classmethod
     @property
     def task_map(cls):
         return {
-            'update': cls.id_update,
+            'updateIDs': cls.id_update,
         }
     
     @classmethod
@@ -217,21 +218,12 @@ class IDManager:
                 cls.task_map[task](**items)
     
     @classmethod
-    def id_update(cls, cam, active_ids, removed_ids):
+    def id_update(cls, cam, fps, active_ids, removed_ids):
         """
         1. Update the list of currently active IDs
-            if an active id is new:
-                update (active_c2i, i2c)
-                sync set에 age=1이랑 같이 넣기
-            else:
-                update active_c2i
         2. Check for removed IDs and determine whether to save them in the gallery
-            synced_sets에서 얘 빼기, 다 비어있는 set은 제거하기
-            if an removed id is reided:
-                gallery에 넣기
-            else:
-                버리기
         3. Increase ages for synced set and Checkup each to determine whether to give new reid
+        4. Check if there exists any out-of-date id in gallery
 
         Args:
             cam (int): index of input channel
@@ -267,14 +259,15 @@ class IDManager:
                 new_set[0][:] = [-1] # it will decrease if this set keeps unassigned state
                 new_set[1][cam] = id
                 new_set[2][cam] = None # TODO: 다른 id가 여기 set에 추가될 때 nearest id의 distance도 같이 바꿔줘야할듯? 
-                IDManager.synced_sets.append(new_set)
+                cls.synced_sets.append(new_set)
             else:
                 continue
         cls.newest_id[cam] = max(cls.newest_id[cam], newest_id)
         
         """2. Check for removed IDs and determine whether to save them in the gallery"""
-        for idx, (property, ids, dists) in enumerate(cls.synced_sets.copy()):
-            for id in removed_ids.copy():
+        """3. Increase ages(-similarity) for synced set and Checkup each to determine whether to give new reid"""
+        for property, ids, dists in cls.synced_sets.copy():
+            for id in removed_ids.copy(): # 2.
                 if id in ids:
                     removed_ids.remove(id)
                     ids[cam] = None # cam = ids.index(id)
@@ -282,20 +275,19 @@ class IDManager:
                     if int(*property)>0: # If the removed id has reid
                         cls.add_new_asset(cam, id) # Add to gallery
             if not any(ids): # If the set get empty
-                del(cls.synced_sets[idx])
-                
-        """TODO: 3. Increase ages for synced set and Checkup each to determine whether to give new reid"""
-            
-            
+                del(cls.synced_sets.remove((property, ids, dists)))
+            elif int(*property)<0: # 3.
+                if -int(*property) > cls.max_noreid*fps:
+                    property[:] = [cls.new_reid()]
+                else:
+                    property[:] = [int(*property)-1]
+        """4. Check if there exists any out-of-date id in gallery"""
+        cls.checkup_assets(cam, fps)
         
-        """Originals"""
-        
-        cls.active_c2i[cam] = set(active_ids)
-        for id in active_ids:
-            if id > cls.newest_id[cam]:
-                cls.i2c[id] = cam              
-                cls.newest_id[cam] = id
-            reid = cls.get_reid(id)
+    @staticmethod
+    def new_reid():
+        IDManager._new_reid += 1
+        return IDManager._new_reid
     
     @staticmethod
     def add_new_asset(cam, id):
@@ -305,11 +297,11 @@ class IDManager:
             cam (int): index of input channel
             id (int): track id
         """
-        if IDManager.get_reid(id): # if it's unidentified ID, it will be thrown away
-            if IDManager.gallery[cam]:
-                IDManager.gallery[cam].append([id, 0])
-            else:
-                IDManager.gallery[cam] = [[id, 0]]
+        reid = IDManager.get_reid(id)
+        if reid: # if it's unidentified ID, it will be thrown away
+            profile = (id, reid, 0) 
+            for n, asset in enumerate(IDManager.gallery[cam]):
+                asset.append(profile[n])
         else:
             del(Features.fs[id])
 
@@ -321,15 +313,15 @@ class IDManager:
             cam (int): index of input channel
             fps (float): fps of input channel
         """
-        if not IDManager.gallery[cam]:
+        if not any(IDManager.gallery[cam]):
             return
         else:
-            for i, asset in enumerate(IDManager.gallery[cam]):
-                asset[-1] += 1
-                if asset[-1] > IDManager.gallery_life*fps:
-                    IDManager.reset_reid(asset[0], None)
-                    del(IDManager.gallery[cam][i])
-                    del(Features.fs[asset[0]])
+            ids, _, ages = IDManager.gallery[cam].copy()
+            for n, age in enumerate(ages):
+                age += 1
+                if age > IDManager.gallery_life*fps:
+                    del(IDManager.gallery[cam][n])
+                    del(Features.fs[ids[n]])
     
     @staticmethod
     def get_reid(id):

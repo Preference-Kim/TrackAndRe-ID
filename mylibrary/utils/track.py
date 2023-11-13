@@ -51,22 +51,22 @@ class TrackCamThread(Thread):
         self.query = IDManager.task_q
         self.output_queue = output_queue
 
-    @staticmethod
-    def ismyturn(camid):
-        who = TrackCamThread.which_cam
-        if TrackCamThread.step == TrackCamThread.stepsz:
-            TrackCamThread.step = 1
-            if who in range(TrackCamThread.num_cam):
-                TrackCamThread.which_cam = (who + 1) % TrackCamThread.num_cam
+    @classmethod
+    def ismyturn(cls, camid):
+        who = cls.which_cam
+        if cls.step == cls.stepsz:
+            cls.step = 1
+            if who in range(cls.num_cam):
+                cls.which_cam = (who + 1) % cls.num_cam
                 return camid==who
             elif who < 0:
-                TrackCamThread.which_cam += 1
+                cls.which_cam += 1
             else:
-                TrackCamThread.which_cam = -1
-        elif TrackCamThread.step < TrackCamThread.stepsz:
-            TrackCamThread.step += 1
+                cls.which_cam = -1
+        elif cls.step < cls.stepsz:
+            cls.step += 1
         else:
-            TrackCamThread.step = 1
+            cls.step = 1
         return False
     
     def run(self):
@@ -92,8 +92,9 @@ class TrackCamThread(Thread):
                     else:
                         draw_line_unsync(self.frame_ant, x1, y1, x2, y2, index)
                 if self.isreid:
-                    self.update_active_ids(indices) #TODO: IDManager.synced_ids의 key(followee)가 active에 없으면 지워버리기. 그리고 reid는 매번 reidmap을 통해서 갱신하기(reid core, sync 분리)
-                    if TrackCamThread.ismyturn(self.cam) and self.reid_queue.ready:
+                    self.query.put_query(task='updateIDs', items={'cam':self.cam, 'fps':self.fps, 'active_ids':indices, 'removed_ids':removed_ids})
+                    #TODO: reid는 매번 reidmap을 통해서 갱신하기(reid core, sync 분리)
+                    if self.ismyturn(self.cam) and self.reid_queue.ready:
                         self.count += 1
                         msg = (frame, self.count, xys, indices)
                         self.reid_queue.put(msg)
@@ -147,31 +148,6 @@ class TrackCamThread(Thread):
                                 object_classes=np.array(object_classes),
                                 get_removed_tracks=True)
         return (outputs, removed_ids)
-
-    def update_active_ids(self, indices):
-        if not self.activeids:
-            self.activeids = indices
-        else:
-            for did in self.deactiveids: # revive
-                if did in indices:
-                    del(self.deactiveids[did])
-            for id in self.activeids: # config deactivated ids
-                if id in indices:
-                    continue
-                else:
-                    self.deactiveids[id] = [0, self.cam] # deactive
-                    _ = IDManager.synced_ids_REMOVED.pop(id, None)
-        IDManager.id_update(indices, self.cam)
-        self.checkup_ids()
-    
-    def checkup_ids(self):
-        for did, status in self.deactiveids.items():
-            status += 1
-            if status > self.life*self.fps:
-                IDManager.add_new_asset(self.cam, did)
-                del(self.deactiveids[did])
-        IDManager.checkup_assets(self.cam, self.fps)
-            
 
 def draw_line_unsync(image, x1, y1, x2, y2, index):
     w = 10
